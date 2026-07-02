@@ -3,17 +3,21 @@ from launch_ros.actions import Node
 import os
 from ament_index_python.packages import get_package_share_directory
 
-# ros2 bag play _2022-04-07-14-14-35_robotarium/_2022-04-07-14-14-35_robotarium_ros2.db3 --clock --start-paused --remap /stereo_camera/left/image_raw:=/robotarium/camera/image /odometry/filtered:=/robotarium/odom
+# ros2 bag play ROSI_LABCON1/ROSI_LABCON_db3/ROSI_LABCON_db3_0.db3 
+# --rate 1.0 --clock --start-paused --remap /camera/camera/color/image_raw:=/ROSI/camera/image/image_raw
+
+# ros2 bag play rosi_120326_mov_desacoplados_with_odom_fused/rosi_120326_mov_desacoplados_with_odom_fused_0.db3
+#  --clock --start-paused --remap /camera/camera/color/image_raw:=/ROSI/camera/image /odometry/fused:=/ROSI/odom --rate 2.0
 
 def generate_launch_description():
     # Get package directory
     pkg_dir = get_package_share_directory('neoslam')
     
     # Configuration file
-    config_file = os.path.join(pkg_dir, 'config', 'config_neoslam_robotarium.yaml')
+    config_file = os.path.join(pkg_dir, 'config', 'config_neoslam_ROSI_labcon.yaml')
     
     # Common parameters
-    topic_root = 'robotarium'
+    topic_root = 'ROSI'
     media_path = os.path.join(pkg_dir, 'media')
     image_file = 'irat_sm.tga'
     
@@ -114,11 +118,27 @@ def generate_launch_description():
         ]
     )
 
+    vo_node = Node(
+        package='neoslam',
+        executable='visual_odometry_node',
+        name='visual_odometry_node',
+        output='screen',
+        parameters=[
+            config_file,
+            {
+                'topic_root': topic_root,
+                'media_path': media_path,
+                'image_file': image_file,
+                'use_sim_time': False
+            }
+        ]
+    )
+
     return LaunchDescription([
         vfe_node,
         bp_node,
         neocortex_node,
         svc_node,
         pc_node,
-        em_node
+        em_node,
     ])

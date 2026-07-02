@@ -1,6 +1,6 @@
 # neoslam
 
-This package is a bio-inspired SLAM system for ROS 2 (tested on ROS 2 Rolling) that combines deep learning visual features, Hierarchical Temporal Memory (HTM), and topological mapping for robust simultaneous localization and mapping.
+This package is a bio-inspired SLAM system for ROS 2 (tested on ROS 2 Jazzy) that combines deep learning visual features, Hierarchical Temporal Memory (HTM), and topological mapping for robust simultaneous localization and mapping.
 
 ## System Overview
 
@@ -46,24 +46,16 @@ In addition to standard ROS 2 dependencies, this package requires:
 
 ### 1. Install System Dependencies
 
-You can use the provided installation script:
-
-```bash
-cd ~/ros2_ws/src/neoslam
-chmod +x install_dependencies.sh
-./install_dependencies.sh
-```
-
-Or install manually:
+Install the base packages and tools required by the system, including Python Virtual Environment support:
 
 ```bash
 sudo apt update
 sudo apt install -y \
-    ros-rolling-cv-bridge \
-    ros-rolling-image-transport \
-    ros-rolling-image-transport-plugins \
-    ros-rolling-tf2-geometry-msgs \
-    ros-rolling-vision-opencv \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-image-transport \
+    ros-jazzy-image-transport-plugins \
+    ros-jazzy-tf2-geometry-msgs \
+    ros-jazzy-vision-opencv \
     libopencv-dev \
     libboost-all-dev \
     libirrlicht-dev \
@@ -71,44 +63,70 @@ sudo apt install -y \
     libglu1-mesa-dev \
     libeigen3-dev \
     python3-opencv \
-    python3-pip
+    python3-pip \
+    python3-venv \
+    python3-full \
+    python3-numpy \
+    python3-pybind11
 ```
 
-### 2. Install Python Dependencies
+### 2. Configure Python Virtual Environment (PEP 668)
+
+Ubuntu 24.04 enforces externally managed Python environments. To install PyTorch and maintain ROS 2 compatibility, create a virtual environment that links to system packages:
 
 ```bash
-pip3 install torch torchvision pybind11 numpy
+# Create the environment outside the workspace
+python3 -m venv --system-site-packages ~/ros2_env
+
+# Activate the environment
+source ~/ros2_env/bin/activate
 ```
 
-### 3. Clone Required Repositories
+### 3. Install PyTorch with GPU (CUDA) Support
+
+With the virtual environment activated, install PyTorch optimized for NVIDIA GPUs:
 
 ```bash
-cd ~/ros2_ws/src
+pip3 install torch torchvision
+```
+
+*(Optional) To automate environment activation on new terminals, add this to your `~/.bashrc`:*
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/ros2_env/bin/activate
+```
+
+### 4. Clone Required Repositories
+
+```bash
+cd ~/ros2_jazzy_ws/src
 git clone https://github.com/BorgesJVT/neoslam.git
 git clone https://github.com/BorgesJVT/topological_msgs.git
 ```
 
-### 4. Generate Random Projection Matrix
+### 5. Generate Random Projection Matrix
 
 The binary projector requires a random projection matrix. Generate it with:
 
 ```bash
-cd ~/ros2_ws/src/neoslam/src/dim_reduction_and_binarization/random_matrix
+cd ~/ros2_jazzy_ws/src/neoslam/src/dim_reduction_and_binarization/random_matrix
 python3 generate_random_matrix.py --rows 64896 --cols 1024 --output randomMatrix.bin
 ```
 
-### 5. Build the Workspace
+### 6. Build the Workspace
+
+Ensure your virtual environment is active before running the build command:
 
 ```bash
-cd ~/ros2_ws
-source /opt/ros/rolling/setup.bash
-colcon build --packages-select topological_msgs neoslam
+cd ~/ros2_jazzy_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select topological_msgs neoslam --symlink-install
 ```
 
-### 6. Source the Workspace
+### 7. Source the Workspace
 
 ```bash
-source ~/ros2_ws/install/setup.bash
+source ~/ros2_jazzy_ws/install/setup.bash
 ```
 
 ## Usage
@@ -135,19 +153,3 @@ ros2 bag play data/irat_aus_28112011.db3 --rate 1.0 --clock --start-paused
 
 # Adjust rate as needed (1.0 = real-time, 2.0 = 2x speed, etc.)
 ```
-
-<!-- ## Configuration
-
-Configuration files are located in the `config/` directory:
-
-- `config_neoslam_irataus.yaml`: Configuration for iratAUS dataset
-- `config_neoslam_robotarium.yaml`: Configuration for Robotarium dataset
-
-Key parameters include:
-
-- **Visual Feature Extractor**: Image cropping, frame stride, AlexNet model path
-- **Binary Projector**: Random matrix path, LSBH parameters
-- **Neocortex (HTM)**: Temporal memory parameters (columns, cells, thresholds)
-- **Spatial View Cells**: Loop closure thresholds, interval parameters
-- **Pose Cells**: Network dimensions, attractor dynamics parameters
-- **Experience Map**: Relaxation parameters, map correction rates -->

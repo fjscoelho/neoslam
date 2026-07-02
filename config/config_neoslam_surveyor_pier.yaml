@@ -1,12 +1,10 @@
 visual_feature_extractor_node:
   ros__parameters:
-    use_compressed: true
-    frame_stride: 4
-    crop_image: true
-    image_crop_x_min: 0
-    # image_crop_x_max: 60
-    image_crop_y_min: 0
-    image_crop_y_max: 150
+    use_compressed: false
+    image_crop_x_min: 40
+    image_crop_x_max: 600
+    image_crop_y_min: 150
+    image_crop_y_max: 300
 
 neocortex_node:
   ros__parameters:
@@ -27,24 +25,33 @@ neocortex_node:
 
 spatial_view_cells_node:
   ros__parameters:
-    theta_alpha: 384
-    theta_rho: 6
-    score_interval: 485
-    exclude_recent_intervals: 3
+    theta_alpha: 390
+    theta_rho: 3
+    score_interval: 380
+    exclude_recent_intervals: 100
 
 pose_cells_node:
   ros__parameters:
-    pc_dim_xy: 11
-    pc_vt_inject_energy: 0.1
-    pc_cell_x_size: 0.015
-    exp_delta_pc_threshold: 5.0
+    pc_dim_xy: 18
+    pc_dim_th: 36
+    pc_w_e_dim: 7
+    pc_w_i_dim: 5
+    pc_w_e_var: 1
+    pc_w_i_var: 2
+    pc_global_inhib: 0.00002
+    vt_active_decay: 2.0
+    pc_vt_inject_energy: 0.08
+    pc_cell_x_size: 1.0
+    exp_delta_pc_threshold: 2.0
+    pc_vt_restore: 0.1
     # draw
     enable: true
 
 experience_map_node:
   ros__parameters:
-    exp_loops: 20
-    exp_initial_em_deg: 140.0
+    exp_correction: 0.5
+    exp_loops: 50
+    exp_initial_em_deg: 194.0
     # draw
     enable: true
 

@@ -3,17 +3,17 @@ from launch_ros.actions import Node
 import os
 from ament_index_python.packages import get_package_share_directory
 
-# ros2 bag play _2022-04-07-14-14-35_robotarium/_2022-04-07-14-14-35_robotarium_ros2.db3 --clock --start-paused --remap /stereo_camera/left/image_raw:=/robotarium/camera/image /odometry/filtered:=/robotarium/odom
+# ros2 bag play surveyor_MMC_Lake_NeoSLAM/surveyor_MMC_Lake_NeoSLAM_0.db3 --clock --start-paused --remap /surveyor/camera/image/image_raw:=/surveyor/camera/image --rate 1.0
 
 def generate_launch_description():
     # Get package directory
     pkg_dir = get_package_share_directory('neoslam')
     
     # Configuration file
-    config_file = os.path.join(pkg_dir, 'config', 'config_neoslam_robotarium.yaml')
+    config_file = os.path.join(pkg_dir, 'config', 'config_neoslam_surveyor_lake.yaml')
     
     # Common parameters
-    topic_root = 'robotarium'
+    topic_root = 'surveyor'
     media_path = os.path.join(pkg_dir, 'media')
     image_file = 'irat_sm.tga'
     

@@ -1,0 +1,91 @@
+visual_feature_extractor_node:
+  ros__parameters:
+    use_compressed: false
+
+neocortex_node:
+  ros__parameters:
+    # TemporalMemory parameters
+    tm_column_dimensions: 2048
+    tm_cells_per_column: 32
+    tm_activation_threshold: 4
+    tm_initial_permanence: 0.55
+    tm_connected_permanence: 0.5
+    tm_min_threshold: 1
+    tm_max_new_synapse_count: 20
+    tm_permanence_increment: 0.01
+    tm_permanence_decrement: 0.01
+    tm_predicted_segment_decrement: 0.0005
+    tm_max_segments_per_cell: 100
+    tm_max_synapses_per_segment: 100
+    tm_seed: 42
+
+spatial_view_cells_node:
+  ros__parameters:
+    theta_alpha: 384
+    theta_rho: 3
+    score_interval: 400  # 412 is good for ROSI_t265 and 440 for ROSI_t265_t2
+    exclude_recent_intervals: 50
+    # draw
+    enable: true
+
+visual_odometry_node:
+  ros__parameters:
+    vtrans_image_x_min: 40
+    vtrans_image_x_max: 600
+    vtrans_image_y_min: 270
+    vtrans_image_y_max: 430
+    vrot_image_x_min: 40   # Upper area for rotation
+    vrot_image_x_max: 600
+    vrot_image_y_min: 75
+    vrot_image_y_max: 240
+    camera_fov_deg: 69.4  # Horizontal FOV of Intel Realsense d435
+    camera_hz: 9.5
+    vtrans_scaling: 50.0
+    vtrans_max: 0.5
+
+steering_model_node:
+  ros__parameters:
+    # Constant to convert an electric current of a wheel into torque
+    wheel_current_2_torque: 0.00275863
+    # Constant to convert an electric current of a arm into torque
+    arm_current_2_torque: 0.0144672
+    # Distance between the center linepoint of two symetric wheels
+    body_width_wheels: 0.570 #[m]
+    # Distance between the center linepoint of two symetric wheels
+    body_width_tracks: 0.455 #[m]
+    # Wheel radius
+    wheels_radius: 0.132 #[m]
+    # Track radius
+    tracks_radius: 0.0683 #[m]
+    # Robot mass
+    mass: 55.0 #[kg]
+    # Moment of inertia on the Z axis on the principal inertia axis
+    izz: 8.58 #[kg.m^2]
+
+pose_cells_node:
+  ros__parameters:
+    pc_dim_xy: 30
+    pc_dim_th: 36
+    pc_w_e_dim: 7
+    pc_w_i_dim: 5
+    pc_w_e_var: 1
+    pc_w_i_var: 2
+    pc_global_inhib: 0.00002
+    vt_active_decay: 1.0
+    pc_vt_inject_energy: 0.15
+    pc_cell_x_size: 0.03
+    exp_delta_pc_threshold: 1.0
+    pc_vt_restore: 0.05
+    # draw
+    enable: true
+
+experience_map_node:
+  ros__parameters:
+    exp_correction: 0.5
+    exp_loops: 5
+    exp_initial_em_deg: 0.0
+    max_goals: 10
+    # draw
+    enable: true
+
+
