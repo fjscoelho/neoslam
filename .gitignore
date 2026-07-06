@@ -2,3 +2,4 @@
 /data
 /bags
 src/dim_reduction_and_binarization/random_matrix/*.bin
+/build

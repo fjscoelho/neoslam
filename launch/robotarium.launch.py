@@ -1,5 +1,7 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 import os
 from ament_index_python.packages import get_package_share_directory
 
@@ -114,11 +116,23 @@ def generate_launch_description():
         ]
     )
 
+    # ============================================
+    # New: Publish static TF map -> odom
+    # ============================================
+    static_tf_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_map_odom',
+        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+        output='screen'
+    )
+
     return LaunchDescription([
         vfe_node,
         bp_node,
         neocortex_node,
         svc_node,
         pc_node,
-        em_node
+        em_node,
+        static_tf_node  # <-- ADICIONADO
     ])

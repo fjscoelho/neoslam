@@ -26,6 +26,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(topological_msgs REQUIRED)
+find_package(std_srvs REQUIRED)  # <-- ADICIONADO para serviços
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization)
@@ -37,6 +38,10 @@ find_package(roaring REQUIRED)
 # Find Python and pybind11 for visual feature extractor
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(pybind11 REQUIRED)
+
+find_package(nlohmann_json REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 
 # CRITICAL: Enable optimization flags for Eigen performance
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -DNDEBUG")
@@ -128,14 +133,20 @@ ament_target_dependencies(pose_cells_node
 # experience_map_node executable
 add_executable(experience_map_node 
   src/experience_map/experience_map_node.cpp
-  src/experience_map/experience_map.cpp)
+  src/experience_map/experience_map.cpp
+  # src/experience_map/export_map_service.cpp      # <-- ADICIONADO
+  # src/experience_map/map_visualization_exporter.cpp  # <-- ADICIONADO
+  # Os serviços são header-only, não precisam de .cpp
+)
 target_include_directories(experience_map_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/experience_map
+  ${JSONCPP_INCLUDE_DIRS}  # <-- ADICIONADO para JSON
 )
 target_link_libraries(experience_map_node
   ${Boost_LIBRARIES}
   ${IRRLICHT_LIBRARIES}
   ${OPENGL_LIBRARIES}
+  ${JSONCPP_LIBRARIES}  # <-- ADICIONADO para JSON
 )
 ament_target_dependencies(experience_map_node
   rclcpp
@@ -146,6 +157,7 @@ ament_target_dependencies(experience_map_node
   tf2_ros
   tf2_geometry_msgs
   topological_msgs
+  std_srvs  # <-- ADICIONADO
 )
 
 # visual_odometry_node executable
