@@ -2,7 +2,7 @@
 #define EXPORT_MAP_SERVICE_HPP
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_srvs/srv/empty.hpp>  // <-- CORRIGIDO: sem /detail/
+#include <std_srvs/srv/empty.hpp>
 #include <fstream>
 #include <json/json.h>
 #include "experience_map.h"
@@ -15,7 +15,7 @@ public:
     ExportMapService(ExperienceMap* em_ptr) 
         : Node("export_map_service"), em_(em_ptr)
     {
-        // Serviço para exportação simples (nome padrão)
+        // Serviço para exportação simples
         export_service_ = this->create_service<std_srvs::srv::Empty>(
             "/experience_map/export_graph",
             std::bind(&ExportMapService::export_graph_callback, 
@@ -24,7 +24,7 @@ public:
                       std::placeholders::_2)
         );
         
-        // Serviço para exportação com nome customizado via parâmetro
+        // Serviço para exportação com nome customizado
         export_with_name_service_ = this->create_service<std_srvs::srv::Empty>(
             "/experience_map/export_graph_named",
             std::bind(&ExportMapService::export_graph_named_callback,
@@ -34,8 +34,6 @@ public:
         );
         
         RCLCPP_INFO(this->get_logger(), "Export Map Service initialized");
-        RCLCPP_INFO(this->get_logger(), "  - Call /experience_map/export_graph to export with default name");
-        RCLCPP_INFO(this->get_logger(), "  - Call /experience_map/export_graph_named to export with custom name (set via parameter)");
     }
 
 private:
@@ -43,7 +41,6 @@ private:
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_service_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_with_name_service_;
 
-    // Callback para exportação padrão
     void export_graph_callback(
         const std::shared_ptr<std_srvs::srv::Empty::Request> request,
         std::shared_ptr<std_srvs::srv::Empty::Response> response)
@@ -51,13 +48,17 @@ private:
         (void)request;
         (void)response;
         
+        if (em_ == nullptr) {
+            RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
+            return;
+        }
+        
         std::string default_filename = "topological_map_" + 
                                        std::to_string(this->now().seconds()) + 
                                        ".json";
         export_graph_to_json(default_filename);
     }
 
-    // Callback para exportação com nome customizado via parâmetro
     void export_graph_named_callback(
         const std::shared_ptr<std_srvs::srv::Empty::Request> request,
         std::shared_ptr<std_srvs::srv::Empty::Response> response)
@@ -65,15 +66,29 @@ private:
         (void)request;
         (void)response;
         
+        if (em_ == nullptr) {
+            RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
+            return;
+        }
+        
+        // Tenta obter o parâmetro do nó pai
         std::string filename;
-        // Declare e obtenha o parâmetro
-        this->declare_parameter("export_filename", "topological_map.json");
-        this->get_parameter("export_filename", filename);
+        auto parent_node = std::dynamic_pointer_cast<rclcpp::Node>(this->shared_from_this());
+        if (parent_node) {
+            // Busca o parâmetro no nó pai (experience_map_node)
+            try {
+                filename = parent_node->get_parameter("export_filename").as_string();
+            } catch (const rclcpp::exceptions::ParameterNotDeclaredException& e) {
+                RCLCPP_WARN(this->get_logger(), "Parameter 'export_filename' not found, using default");
+                filename = "topological_map_" + std::to_string(this->now().seconds()) + ".json";
+            }
+        } else {
+            filename = "topological_map_" + std::to_string(this->now().seconds()) + ".json";
+        }
         
         export_graph_to_json(filename);
     }
 
-    // Função principal de exportação
     void export_graph_to_json(const std::string& filename)
     {
         if (em_ == nullptr) {
@@ -83,14 +98,11 @@ private:
 
         Json::Value root;
         
-        // Metadados do mapa
-        root["metadata"]["frame_id"] = "map";
         root["metadata"]["timestamp"] = this->now().seconds();
         root["metadata"]["num_experiences"] = em_->get_num_experiences();
         root["metadata"]["num_links"] = em_->get_num_links();
         root["metadata"]["current_experience_id"] = em_->get_current_id();
         
-        // Exportar nós (experiências)
         Json::Value nodes_array(Json::arrayValue);
         for (int i = 0; i < em_->get_num_experiences(); i++) {
             Experience* exp = em_->get_experience(i);
@@ -103,26 +115,10 @@ private:
             node["th_rad"] = exp->th_rad;
             node["seconds"] = exp->seconds;
             node["nanoseconds"] = exp->nanoseconds;
-            
-            // Lista de links que saem deste nó
-            Json::Value links_from(Json::arrayValue);
-            for (unsigned int link_id : exp->links_from) {
-                links_from.append(link_id);
-            }
-            node["links_from"] = links_from;
-            
-            // Lista de links que chegam neste nó
-            Json::Value links_to(Json::arrayValue);
-            for (unsigned int link_id : exp->links_to) {
-                links_to.append(link_id);
-            }
-            node["links_to"] = links_to;
-            
             nodes_array.append(node);
         }
         root["nodes"] = nodes_array;
         
-        // Exportar arestas (links)
         Json::Value edges_array(Json::arrayValue);
         for (int i = 0; i < em_->get_num_links(); i++) {
             Link* link = em_->get_link(i);
@@ -140,15 +136,6 @@ private:
         }
         root["edges"] = edges_array;
         
-        // Exportar lista de objetivos (se houver)
-        Json::Value goals_array(Json::arrayValue);
-        const std::deque<int>& goals = em_->get_goals();
-        for (int goal_id : goals) {
-            goals_array.append(goal_id);
-        }
-        root["goals"] = goals_array;
-        
-        // Escrever arquivo
         std::ofstream file(filename);
         if (file.is_open()) {
             file << root.toStyledString();
@@ -164,4 +151,4 @@ private:
 
 } // namespace neoslam
 
-#endif
+#endif // EXPORT_MAP_SERVICE_HPP
