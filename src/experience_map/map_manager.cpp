@@ -41,6 +41,7 @@ Json::Value MapManager::serialize_to_json(const MapMetadata& metadata) {
     root["metadata"]["exp_correction"] = metadata.exp_correction;
     root["metadata"]["exp_loops"] = metadata.exp_loops;
     root["metadata"]["exp_initial_em_deg"] = metadata.exp_initial_em_deg;
+    root["metadata"]["has_vt_id"] = metadata.has_vt_id;  // <-- ADICIONADO
     
     // Parâmetros customizados
     for (const auto& param : metadata.custom_params) {
@@ -55,6 +56,7 @@ Json::Value MapManager::serialize_to_json(const MapMetadata& metadata) {
         
         Json::Value node;
         node["id"] = exp->id;
+        node["vt_id"] = exp->vt_id;  // <-- ADICIONADO
         node["x_m"] = exp->x_m;
         node["y_m"] = exp->y_m;
         node["th_rad"] = exp->th_rad;
@@ -140,6 +142,7 @@ YAML::Node MapManager::serialize_to_yaml(const MapMetadata& metadata) {
     root["metadata"]["exp_correction"] = metadata.exp_correction;
     root["metadata"]["exp_loops"] = metadata.exp_loops;
     root["metadata"]["exp_initial_em_deg"] = metadata.exp_initial_em_deg;
+    root["metadata"]["has_vt_id"] = metadata.has_vt_id;  // <-- ADICIONADO
     
     // Nós
     for (int i = 0; i < em_->get_num_experiences(); i++) {
@@ -148,12 +151,14 @@ YAML::Node MapManager::serialize_to_yaml(const MapMetadata& metadata) {
         
         YAML::Node node;
         node["id"] = exp->id;
+        node["vt_id"] = exp->vt_id;  // <-- ADICIONADO
         node["x_m"] = exp->x_m;
         node["y_m"] = exp->y_m;
         node["th_rad"] = exp->th_rad;
         node["seconds"] = exp->seconds;
         node["nanoseconds"] = exp->nanoseconds;
         
+    
         root["nodes"].push_back(node);
     }
     
@@ -217,7 +222,7 @@ std::vector<uint8_t> MapManager::serialize_to_binary(const MapMetadata& metadata
     
     // Cabeçalho (magic number + versão)
     uint32_t magic = 0x4E454F53; // "NEOS" em hex
-    uint32_t version = 1;
+    uint32_t version = 2;  // <-- INCREMENTAR VERSÃO (2 = com vt_id)
     write_to_buffer(&magic, sizeof(magic));
     write_to_buffer(&version, sizeof(version));
     
@@ -242,6 +247,7 @@ std::vector<uint8_t> MapManager::serialize_to_binary(const MapMetadata& metadata
         if (exp == nullptr) continue;
         
         write_to_buffer(&exp->id, sizeof(exp->id));
+        write_to_buffer(&exp->vt_id, sizeof(exp->vt_id));  // <-- ADICIONADO
         write_to_buffer(&exp->x_m, sizeof(exp->x_m));
         write_to_buffer(&exp->y_m, sizeof(exp->y_m));
         write_to_buffer(&exp->th_rad, sizeof(exp->th_rad));
@@ -361,15 +367,69 @@ bool MapManager::load_from_json(const std::string& filename) {
     file >> root;
     file.close();
     
-    // Verificar versão
-    if (root["metadata"]["version"].asString() != "1.0") {
-        std::cerr << "Unsupported map version: " 
-                  << root["metadata"]["version"].asString() << std::endl;
+    // Verificar metadados
+    if (!root.isMember("metadata")) {
+        std::cerr << "Invalid map file: missing metadata" << std::endl;
         return false;
     }
     
-    // TODO: Recriar o mapa a partir dos dados
+    // Verificar versão
+    std::string version = root["metadata"]["version"].asString();
+    if (version != "1.0" && version != "1.1") {
+        std::cerr << "Unsupported map version: " << version << std::endl;
+        return false;
+    }
+    
+    bool has_vt_id = version == "1.1" || root["metadata"]["has_vt_id"].asBool();
+    
     std::cout << "Loading map from JSON: " << filename << std::endl;
+    std::cout << "  - Version: " << version << std::endl;
+    std::cout << "  - Has vt_id: " << (has_vt_id ? "yes" : "no") << std::endl;
+    std::cout << "  - Nodes: " << root["nodes"].size() << std::endl;
+    std::cout << "  - Links: " << root["edges"].size() << std::endl;
+    
+    // Limpar o mapa atual
+    if (em_ != nullptr) {
+        // TODO: Chamar o método clear() do ExperienceMap
+        std::cout << "WARNING: Clearing current map..." << std::endl;
+        // em_->clear(); // Descomente quando implementado
+    }
+    
+    // Adicionar nós (Experiences)
+    for (const auto& node_json : root["nodes"]) {
+        int id = node_json["id"].asInt();
+        int vt_id = has_vt_id ? node_json["vt_id"].asInt() : -1;
+        double x = node_json["x_m"].asDouble();
+        double y = node_json["y_m"].asDouble();
+        double th = node_json["th_rad"].asDouble();
+        unsigned int sec = node_json["seconds"].asUInt();
+        unsigned int nsec = node_json["nanoseconds"].asUInt();
+        
+        std::cout << "  Node " << id << " (vt_id=" << vt_id 
+                  << "): (" << x << ", " << y << ", " << th << ")" << std::endl;
+        
+        // TODO: Adicionar a experiência ao ExperienceMap
+        // em_->add_experience_from_import(id, vt_id, x, y, th, sec, nsec);
+    }
+    
+    // Adicionar links (Arestas)
+    for (const auto& edge_json : root["edges"]) {
+        int id = edge_json["id"].asInt();
+        int from = edge_json["exp_from_id"].asInt();
+        int to = edge_json["exp_to_id"].asInt();
+        double d = edge_json["d"].asDouble();
+        double heading = edge_json["heading_rad"].asDouble();
+        double facing = edge_json["facing_rad"].asDouble();
+        double delta_time = edge_json["delta_time_s"].asDouble();
+        
+        std::cout << "  Edge " << id << ": " << from << " -> " << to 
+                  << " (d=" << d << ")" << std::endl;
+        
+        // TODO: Adicionar o link ao ExperienceMap
+        // em_->add_link_from_import(id, from, to, d, heading, facing, delta_time);
+    }
+    
+    std::cout << "Map imported successfully!" << std::endl;
     std::cout << "  - Nodes: " << root["nodes"].size() << std::endl;
     std::cout << "  - Links: " << root["edges"].size() << std::endl;
     

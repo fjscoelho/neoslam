@@ -28,6 +28,9 @@ struct MapMetadata {
     int exp_loops = 10;
     double exp_initial_em_deg = 90.0;
     std::map<std::string, std::string> custom_params;
+    // Novo: Informações sobre vt_id
+    bool has_vt_id = true;  // Indica que o mapa tem vt_id
+    int vt_id_start = 0;    // Valor inicial do vt_id
     
     MapMetadata() {
         auto now = std::chrono::system_clock::now();

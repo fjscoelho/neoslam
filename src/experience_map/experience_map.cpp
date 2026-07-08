@@ -279,7 +279,7 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
     return false;
 
   // check if we are within thres of the goal or timeout
-  if (exp_euclidean_m(&experiences[current_exp_id], &experiences[goal_list[0]]) < 0.1
+  if (exp_euclidean_m(&experiences[current_exp_id], &experiences[goal_list[0]]) < 0.2
       || ((goal_timeout_s != 0) && time_s > goal_timeout_s))
   {
     if (goal_timeout_s != 0 && time_s > goal_timeout_s)
@@ -287,7 +287,7 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
 //      cout << "Timed out reaching goal ... sigh" << endl;
       goal_success = false;
     }
-    if (exp_euclidean_m(&experiences[current_exp_id], &experiences[goal_list[0]]) < 0.1)
+    if (exp_euclidean_m(&experiences[current_exp_id], &experiences[goal_list[0]]) < 0.2)
     {
       goal_success = true;
  //     cout << "Goal reached ... yay!" << endl;
@@ -429,7 +429,7 @@ void ExperienceMap::add_goal(double x_m, double y_m)
     }
   }
 
-  if (min_dist < 0.1)
+  if (min_dist < 0.2)
     add_goal(min_id);
 
 }

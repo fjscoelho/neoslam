@@ -165,6 +165,82 @@ public:
           return goal_path_final_exp_id;
   }
 
+  // Método para limpar o mapa
+    void clear() {
+        experiences.clear();
+        links.clear();
+        goal_list.clear();
+        current_exp_id = 0;
+        prev_exp_id = 0;
+        waypoint_exp_id = -1;
+        goal_timeout_s = 0;
+        goal_success = false;
+        accum_delta_x = 0;
+        accum_delta_y = 0;
+        accum_delta_facing = 0;
+        accum_delta_time_s = 0;
+    }
+    
+    // Método para adicionar experiência importada
+    void add_experience_from_import(int id, int vt_id, double x, double y, 
+                                   double th, unsigned int sec, unsigned int nsec) {
+        // Verificar se o ID já existe
+        if (id >= 0 && id < (int)experiences.size()) {
+            // Atualizar experiência existente
+            experiences[id].vt_id = vt_id;
+            experiences[id].x_m = x;
+            experiences[id].y_m = y;
+            experiences[id].th_rad = th;
+            experiences[id].seconds = sec;
+            experiences[id].nanoseconds = nsec;
+        } else {
+            // Adicionar nova experiência
+            experiences.resize(id + 1);
+            Experience* exp = &experiences[id];
+            exp->id = id;
+            exp->vt_id = vt_id;
+            exp->x_m = x;
+            exp->y_m = y;
+            exp->th_rad = th;
+            exp->seconds = sec;
+            exp->nanoseconds = nsec;
+            exp->goal_to_current = -1;
+            exp->current_to_goal = -1;
+        }
+    }
+    
+    // Método para adicionar link importado
+    void add_link_from_import(int id, int from_id, int to_id, double d, 
+                             double heading, double facing, double delta_time) {
+        // Verificar se o link já existe
+        if (id >= 0 && id < (int)links.size()) {
+            // Atualizar link existente
+            links[id].exp_from_id = from_id;
+            links[id].exp_to_id = to_id;
+            links[id].d = d;
+            links[id].heading_rad = heading;
+            links[id].facing_rad = facing;
+            links[id].delta_time_s = delta_time;
+        } else {
+            // Adicionar novo link
+            links.resize(id + 1);
+            Link* link = &links[id];
+            link->exp_from_id = from_id;
+            link->exp_to_id = to_id;
+            link->d = d;
+            link->heading_rad = heading;
+            link->facing_rad = facing;
+            link->delta_time_s = delta_time;
+        }
+        
+        // Atualizar as listas de links das experiências
+        if (from_id >= 0 && from_id < (int)experiences.size()) {
+            experiences[from_id].links_from.push_back(id);
+        }
+        if (to_id >= 0 && to_id < (int)experiences.size()) {
+            experiences[to_id].links_to.push_back(id);
+        }
+    }
 
   template<typename Archive>
     void serialize(Archive& ar, const unsigned int version)
