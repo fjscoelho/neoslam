@@ -5,31 +5,60 @@
   <version>1.0.0</version>
   <description>neoslam ROS 2 implementation - A bio-inspired simultaneous localization and mapping system</description>
 
-  <maintainer email="borgesjvt@gmail.com">João Victor Torres Borges</maintainer>
+  <maintainer email="fabiojuniocoelho@gmail.com">Fabio Junio dos Santos Coelho</maintainer>
+  <author>Fabio Junio dos Santos Coelho</author>
   <author>João Victor Torres Borges</author>
   <author>Alexandre Pizzino</author>
 
   <license>BSD</license>
 
-  <url type="website">http://ros.org/wiki/neoslam</url>
+  <url type="website">https://github.com/fjscoelho/neoslam</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
+  <!-- Dependências principais -->
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
-  <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>visualization_msgs</depend>
   <depend>image_transport</depend>
   <depend>cv_bridge</depend>
   <depend>topological_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <!-- Bibliotecas de sistema -->
+  <depend>OpenCV</depend>
+  <depend>Boost</depend>
+  <depend>Irrlicht</depend>
+  <depend>OpenGL</depend>
+  <depend>Eigen3</depend>
+  <depend>roaring</depend>
+  <depend>nlohmann-json</depend>
+  <depend>jsoncpp</depend>
   
+  <!-- YAML-CPP -->
+  <depend>yaml-cpp</depend>
+
+  <!-- Python -->
+  <depend>python3-pybind11</depend>
+
+  <depend>ament_index_cpp</depend>
+
+  <!-- Interface ROS -->
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <!-- Testes -->
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+
+  <!-- Para gerar interfaces ROS -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>

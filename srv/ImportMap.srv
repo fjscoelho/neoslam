@@ -1,0 +1,6 @@
+string filename
+---
+bool success
+string message
+int32 num_nodes
+int32 num_links

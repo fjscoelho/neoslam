@@ -1,0 +1,5 @@
+string format
+---
+string[] maps
+int32 count
+string directory

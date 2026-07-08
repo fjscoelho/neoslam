@@ -23,7 +23,11 @@
 #include <json/json.h>
 #include <fstream>
 #include <memory>
-// #include <ament_index_cpp/get_package_share_directory.hpp>  // <-- Este é o correto
+#include "map_manager.hpp"
+#include <neoslam/srv/import_map.hpp>
+#include <neoslam/srv/list_maps.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+
 
 // #include "export_map_service.hpp"
 // #include "map_visualization_exporter.hpp"
@@ -97,6 +101,71 @@ public:
       this->get_parameter("exp_initial_em_deg").as_double()
     );
 
+    // Initialize Map Manager with proper directory
+    std::string map_dir = "./neoslam_maps/";
+    
+    try {
+        std::string pkg_share = ament_index_cpp::get_package_share_directory("neoslam");
+        // Volta para o diretório src do pacote
+        size_t pos = pkg_share.find("/install/");
+        if (pos != std::string::npos) {
+            std::string workspace = pkg_share.substr(0, pos);
+            map_dir = workspace + "/src/neoslam/neoslam_maps/";
+            RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", map_dir.c_str());
+        }
+    } catch (const std::exception& e) {
+        RCLCPP_WARN(this->get_logger(), "Error getting package directory: %s", e.what());
+        RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", map_dir.c_str());
+    }
+    
+    // Criar o diretório se não existir
+    std::string mkdir_cmd = "mkdir -p " + map_dir;
+    system(mkdir_cmd.c_str());
+
+    // Initialize Map Manager
+    map_manager_ = std::make_shared<neoslam::MapManager>(em, map_dir);
+    RCLCPP_INFO(this->get_logger(), "Map Manager initialized");
+    RCLCPP_INFO(this->get_logger(), "  Map directory: %s", map_manager_->get_map_dir().c_str());
+
+    // Export/Import services
+    export_json_service_ = this->create_service<std_srvs::srv::Empty>(
+        "/experience_map/export_json",
+        std::bind(&ExperienceMapNode::export_json_callback, this, 
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    export_yaml_service_ = this->create_service<std_srvs::srv::Empty>(
+        "/experience_map/export_yaml",
+        std::bind(&ExperienceMapNode::export_yaml_callback, this,
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    export_binary_service_ = this->create_service<std_srvs::srv::Empty>(
+        "/experience_map/export_binary",
+        std::bind(&ExperienceMapNode::export_binary_callback, this,
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    export_all_service_ = this->create_service<std_srvs::srv::Empty>(
+        "/experience_map/export_all",
+        std::bind(&ExperienceMapNode::export_all_callback, this,
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    import_map_service_ = this->create_service<neoslam::srv::ImportMap>(
+        "/experience_map/import_map",
+        std::bind(&ExperienceMapNode::import_map_callback, this,
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    list_maps_service_ = this->create_service<neoslam::srv::ListMaps>(
+        "/experience_map/list_maps",
+        std::bind(&ExperienceMapNode::list_maps_callback, this,
+                  std::placeholders::_1, std::placeholders::_2)
+    );
+
+    RCLCPP_INFO(this->get_logger(), "Map export/import services initialized");
+    
     // Initialize publishers
     pub_em = this->create_publisher<topological_msgs::msg::TopologicalMap>(
       topic_root + "/ExperienceMap/Map", 10);
@@ -127,38 +196,6 @@ public:
       topic_root + "/ExperienceMap/SetGoalPose", 10,
       std::bind(&ExperienceMapNode::set_goal_pose_callback, this, std::placeholders::_1));
 
-    // ============================================
-    // CRIAR SERVIÇOS DE EXPORTAÇÃO DIRETAMENTE
-    // ============================================
-    
-    // Serviço para exportar o mapa
-    export_graph_service_ = this->create_service<std_srvs::srv::Empty>(
-      "/experience_map/export_graph",
-      std::bind(&ExperienceMapNode::export_graph_callback, 
-                this, 
-                std::placeholders::_1, 
-                std::placeholders::_2)
-    );
-    
-    // Serviço para exportar com nome customizado
-    export_graph_named_service_ = this->create_service<std_srvs::srv::Empty>(
-      "/experience_map/export_graph_named",
-      std::bind(&ExperienceMapNode::export_graph_named_callback,
-                this,
-                std::placeholders::_1,
-                std::placeholders::_2)
-    );
-    
-    // Serviço para salvar marcadores RViz
-    save_rviz_service_ = this->create_service<std_srvs::srv::Empty>(
-      "/experience_map/save_rviz_markers",
-      std::bind(&ExperienceMapNode::save_rviz_markers_callback,
-                this,
-                std::placeholders::_1,
-                std::placeholders::_2)
-    );
-    
-    RCLCPP_INFO(this->get_logger(), "Export services initialized");
     RCLCPP_INFO(this->get_logger(), "ExperienceMap node initialized");
     
 #ifdef HAVE_IRRLICHT
@@ -183,6 +220,101 @@ public:
     if (ems != nullptr)
       delete ems; 
 #endif
+  }
+
+  // ============================================
+  // CALLBACKS DOS SERVIÇOS DE MAPA
+  // ============================================
+
+  void export_json_callback(
+      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+      std::shared_ptr<std_srvs::srv::Empty::Response> response)
+  {
+      (void)request;
+      (void)response;
+      
+      if (map_manager_) {
+          neoslam::MapMetadata metadata;
+          metadata.description = "NeoSLAM Topological Map (JSON)";
+          std::string timestamp = std::to_string(this->now().seconds());
+          map_manager_->export_json("map_" + timestamp + ".json", metadata);
+      }
+  }
+
+  void export_yaml_callback(
+      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+      std::shared_ptr<std_srvs::srv::Empty::Response> response)
+  {
+      (void)request;
+      (void)response;
+      
+      if (map_manager_) {
+          neoslam::MapMetadata metadata;
+          metadata.description = "NeoSLAM Topological Map (YAML)";
+          std::string timestamp = std::to_string(this->now().seconds());
+          map_manager_->export_yaml("map_" + timestamp + ".yaml", metadata);
+      }
+  }
+
+  void export_binary_callback(
+      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+      std::shared_ptr<std_srvs::srv::Empty::Response> response)
+  {
+      (void)request;
+      (void)response;
+      
+      if (map_manager_) {
+          neoslam::MapMetadata metadata;
+          metadata.description = "NeoSLAM Topological Map (Binary)";
+          std::string timestamp = std::to_string(this->now().seconds());
+          map_manager_->export_binary("map_" + timestamp + ".bin", metadata);
+      }
+  }
+
+  void export_all_callback(
+      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+      std::shared_ptr<std_srvs::srv::Empty::Response> response)
+  {
+      (void)request;
+      (void)response;
+      
+      if (map_manager_) {
+          neoslam::MapMetadata metadata;
+          metadata.description = "NeoSLAM Topological Map (All Formats)";
+          std::string timestamp = std::to_string(this->now().seconds());
+          map_manager_->export_all("map_" + timestamp, metadata);
+      }
+  }
+
+  void import_map_callback(
+      const std::shared_ptr<neoslam::srv::ImportMap::Request> request,
+      std::shared_ptr<neoslam::srv::ImportMap::Response> response)
+  {
+      if (map_manager_) {
+          bool success = map_manager_->import_map(request->filename);
+          response->success = success;
+          response->message = success ? "Map imported successfully" : "Failed to import map";
+      } else {
+          response->success = false;
+          response->message = "Map manager not initialized";
+      }
+  }
+
+  void list_maps_callback(
+      const std::shared_ptr<neoslam::srv::ListMaps::Request> request,
+      std::shared_ptr<neoslam::srv::ListMaps::Response> response)
+  {
+      (void)request;
+      
+      if (map_manager_) {
+          auto maps = map_manager_->list_maps();
+          response->maps = maps;
+          response->count = maps.size();
+          response->directory = map_manager_->get_map_dir();
+      } else {
+          response->count = 0;
+          response->directory = "";
+      }
   }
 
 private:
@@ -482,260 +614,6 @@ private:
     }
   }
 
-  // ============================================
-  // CALLBACKS DOS SERVIÇOS DE EXPORTAÇÃO
-  // ============================================
-  
-  void export_graph_callback(
-      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
-      std::shared_ptr<std_srvs::srv::Empty::Response> response)
-  {
-    (void)request;
-    (void)response;
-    
-    if (em == nullptr) {
-      RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
-      return;
-    }
-    
-    std::string filename = "topological_map_" + 
-                           std::to_string(this->now().seconds()) + 
-                           ".json";
-    export_graph_to_json(filename);
-  }
-  
-  void export_graph_named_callback(
-      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
-      std::shared_ptr<std_srvs::srv::Empty::Response> response)
-  {
-    (void)request;
-    (void)response;
-    
-    if (em == nullptr) {
-      RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
-      return;
-    }
-    
-    std::string filename = this->get_parameter("export_filename").as_string();
-    export_graph_to_json(filename);
-  }
-  
-  void save_rviz_markers_callback(
-      const std::shared_ptr<std_srvs::srv::Empty::Request> request,
-      std::shared_ptr<std_srvs::srv::Empty::Response> response)
-  {
-    (void)request;
-    (void)response;
-    
-    if (em == nullptr) {
-      RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
-      return;
-    }
-    
-    std::string filename = "topological_map_rviz_" + 
-                           std::to_string(this->now().seconds()) + 
-                           ".json";
-    save_rviz_markers_to_json(filename);
-  }
-  
-  void export_graph_to_json(const std::string& filename)
-  {
-    if (em == nullptr) {
-      RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
-      return;
-    }
-
-    Json::Value root;
-    
-    root["metadata"]["timestamp"] = this->now().seconds();
-    root["metadata"]["num_experiences"] = em->get_num_experiences();
-    root["metadata"]["num_links"] = em->get_num_links();
-    root["metadata"]["current_experience_id"] = em->get_current_id();
-    
-    Json::Value nodes_array(Json::arrayValue);
-    for (int i = 0; i < em->get_num_experiences(); i++) {
-      Experience* exp = em->get_experience(i);
-      if (exp == nullptr) continue;
-      
-      Json::Value node;
-      node["id"] = exp->id;
-      node["x_m"] = exp->x_m;
-      node["y_m"] = exp->y_m;
-      node["th_rad"] = exp->th_rad;
-      node["seconds"] = exp->seconds;
-      node["nanoseconds"] = exp->nanoseconds;
-      nodes_array.append(node);
-    }
-    root["nodes"] = nodes_array;
-    
-    Json::Value edges_array(Json::arrayValue);
-    for (int i = 0; i < em->get_num_links(); i++) {
-      Link* link = em->get_link(i);
-      if (link == nullptr) continue;
-      
-      Json::Value edge;
-      edge["id"] = i;
-      edge["exp_from_id"] = link->exp_from_id;
-      edge["exp_to_id"] = link->exp_to_id;
-      edge["d"] = link->d;
-      edge["heading_rad"] = link->heading_rad;
-      edge["facing_rad"] = link->facing_rad;
-      edge["delta_time_s"] = link->delta_time_s;
-      edges_array.append(edge);
-    }
-    root["edges"] = edges_array;
-    
-    std::ofstream file(filename);
-    if (file.is_open()) {
-      file << root.toStyledString();
-      file.close();
-      RCLCPP_INFO(this->get_logger(), "Map exported successfully to: %s", filename.c_str());
-      RCLCPP_INFO(this->get_logger(), "  - Nodes: %d", em->get_num_experiences());
-      RCLCPP_INFO(this->get_logger(), "  - Edges: %d", em->get_num_links());
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", filename.c_str());
-    }
-  }
-  
-  void save_rviz_markers_to_json(const std::string& filename)
-  {
-    if (em == nullptr) {
-      RCLCPP_ERROR(this->get_logger(), "ExperienceMap is null!");
-      return;
-    }
-
-    Json::Value root;
-    root["type"] = "topological_map";
-    root["timestamp"] = this->now().seconds();
-    
-    Json::Value nodes_array(Json::arrayValue);
-    Json::Value edges_array(Json::arrayValue);
-    
-    for (int i = 0; i < em->get_num_experiences(); i++) {
-      Experience* exp = em->get_experience(i);
-      if (exp == nullptr) continue;
-      
-      Json::Value node;
-      node["id"] = exp->id;
-      node["x"] = exp->x_m;
-      node["y"] = exp->y_m;
-      node["theta"] = exp->th_rad;
-      nodes_array.append(node);
-    }
-    root["nodes"] = nodes_array;
-    
-    for (int i = 0; i < em->get_num_links(); i++) {
-      Link* link = em->get_link(i);
-      if (link == nullptr) continue;
-      
-      Json::Value edge;
-      edge["from"] = link->exp_from_id;
-      edge["to"] = link->exp_to_id;
-      edge["distance"] = link->d;
-      edges_array.append(edge);
-    }
-    root["edges"] = edges_array;
-    
-    std::ofstream file(filename);
-    if (file.is_open()) {
-      file << root.toStyledString();
-      file.close();
-      RCLCPP_INFO(this->get_logger(), "RViz markers saved to: %s", filename.c_str());
-      RCLCPP_INFO(this->get_logger(), "  - Nodes: %d", em->get_num_experiences());
-      RCLCPP_INFO(this->get_logger(), "  - Edges: %d", em->get_num_links());
-      
-      // Gerar arquivo de configuração RViz
-      generate_rviz_config();
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to save RViz markers to: %s", filename.c_str());
-    }
-  }
-  
-  void generate_rviz_config()
-  {
-    std::string config_filename = "topological_map_viewer.rviz";
-    std::ofstream config(config_filename);
-    if (config.is_open()) {
-      config << "Panels:\n"
-             << "  - Class: rviz_common/Displays\n"
-             << "    Name: Displays\n"
-             << "    Position:\n"
-             << "      x: 50\n"
-             << "      y: 50\n"
-             << "    Width: 400\n"
-             << "    Height: 600\n"
-             << "Visualization Manager:\n"
-             << "  Class: \"\"\n"
-             << "  Displays:\n"
-             << "    - Alpha: 0.5\n"
-             << "      Cell Size: 1\n"
-             << "      Class: rviz_default_plugins/Grid\n"
-             << "      Color: 160; 160; 164\n"
-             << "      Enabled: true\n"
-             << "      Name: Grid\n"
-             << "      Normal Cell Count: 0\n"
-             << "      Offset:\n"
-             << "        x: 0\n"
-             << "        y: 0\n"
-             << "        z: 0\n"
-             << "      Plane: XY\n"
-             << "      Plane Cell Count: 10\n"
-             << "      Reference Frame: map\n"
-             << "      Value: true\n"
-             << "    - Alpha: 1\n"
-             << "      Class: rviz_default_plugins/MarkerArray\n"
-             << "      Enabled: true\n"
-             << "      Name: Topological Map\n"
-             << "      Namespaces:\n"
-             << "        nodes: true\n"
-             << "        edges: true\n"
-             << "        current: true\n"
-             << "      Queue Size: 10\n"
-             << "      Topic: /robotarium/ExperienceMap/RVizMarkers\n"
-             << "      Value: true\n"
-             << "  Enabled: true\n"
-             << "  Global Options:\n"
-             << "    Background Color: 48; 48; 48\n"
-             << "    Fixed Frame: map\n"
-             << "    Frame Rate: 30\n"
-             << "  Name: root\n"
-             << "  Tools:\n"
-             << "    - Class: rviz_default_plugins/Interact\n"
-             << "      Hide Inactive Objects: true\n"
-             << "    - Class: rviz_default_plugins/MoveCamera\n"
-             << "    - Class: rviz_default_plugins/Select\n"
-             << "    - Class: rviz_default_plugins/FocusCamera\n"
-             << "    - Class: rviz_default_plugins/Measure\n"
-             << "  Value: true\n"
-             << "  Views:\n"
-             << "    Current:\n"
-             << "      Class: rviz_default_plugins/Orbit\n"
-             << "      Distance: 10\n"
-             << "      Enable Stereo Rendering: false\n"
-             << "      Stereo Eye Separation: 0.059999999999999998\n"
-             << "      Stereo Focal Distance: 1\n"
-             << "      Swap Stereo Eyes: false\n"
-             << "      Value: Orbit (rviz)\n"
-             << "      Focal Point:\n"
-             << "        x: 0\n"
-             << "        y: 0\n"
-             << "        z: 0\n"
-             << "      Focal Shape Fixed: true\n"
-             << "      Focal Shape Size: 0.050000000000000003\n"
-             << "      Invert Z Axis: false\n"
-             << "      Name: Current View\n"
-             << "      Near Clip Distance: 0.0099999999999999998\n"
-             << "      Pitch: 0.78539816339744828\n"
-             << "      Target Frame: map\n"
-             << "      Value: Orbit (rviz)\n"
-             << "      Yaw: 0.78539816339744828\n"
-             << "    Saved: ~\n";
-      config.close();
-      RCLCPP_INFO(this->get_logger(), "RViz config generated: %s", config_filename.c_str());
-      RCLCPP_INFO(this->get_logger(), "Run: rviz2 -d %s", config_filename.c_str());
-    }
-  }
-
   // ============================================================
   // MEMBROS PRIVADOS
   // ============================================================
@@ -761,14 +639,16 @@ private:
   rclcpp::Time prev_pub_time{0, 0, RCL_ROS_TIME};
   int action_counter = 0;
 
-  // ============================================
-  // SERVIÇOS DE EXPORTAÇÃO
-  // ============================================
-  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_graph_service_;
-  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_graph_named_service_;
-  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr save_rviz_service_;
-  
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+  // Map Manager
+  std::shared_ptr<neoslam::MapManager> map_manager_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_json_service_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_yaml_service_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_binary_service_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_all_service_;
+  rclcpp::Service<neoslam::srv::ImportMap>::SharedPtr import_map_service_;
+  rclcpp::Service<neoslam::srv::ListMaps>::SharedPtr list_maps_service_;
   
 #ifdef HAVE_IRRLICHT
   ExperienceMapScene *ems = nullptr;

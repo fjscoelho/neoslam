@@ -14,6 +14,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)  # <-- IMPORTANTE
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -26,7 +27,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(topological_msgs REQUIRED)
-find_package(std_srvs REQUIRED)  # <-- ADICIONADO para serviços
+find_package(std_srvs REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS serialization)
@@ -41,17 +42,32 @@ find_package(pybind11 REQUIRED)
 
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(yaml-cpp REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+
+find_package(ament_index_cpp REQUIRED)
 
 # CRITICAL: Enable optimization flags for Eigen performance
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -DNDEBUG")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2 -mfma")  # Enable AVX2 and FMA for SIMD
-# Eigen optimization flags
-add_definitions(-DEIGEN_NO_DEBUG)           # Disable Eigen debug checks
-add_definitions(-DEIGEN_DONT_PARALLELIZE)   # Single-threaded (faster for small ops)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2 -mfma")
+add_definitions(-DEIGEN_NO_DEBUG)
+add_definitions(-DEIGEN_DONT_PARALLELIZE)
 
 # uncomment if you don't have irrlicht installed
 add_definitions("-DHAVE_IRRLICHT")
+
+# ============================================
+# GERAR INTERFACES DOS SERVIÇOS (ANTES DOS TARGETS)
+# ============================================
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/ImportMap.srv"
+  "srv/ListMaps.srv"
+  DEPENDENCIES builtin_interfaces
+)
+
+# ============================================
+# AGORA OS TARGETS (executáveis)
+# ============================================
 
 # visual_feature_extractor_node executable
 add_executable(visual_feature_extractor_node 
@@ -64,7 +80,6 @@ target_link_libraries(visual_feature_extractor_node
   pybind11::embed
   Python3::Python
 )
-
 ament_target_dependencies(visual_feature_extractor_node
   rclcpp
   std_msgs
@@ -130,24 +145,31 @@ ament_target_dependencies(pose_cells_node
   topological_msgs
 )
 
-# experience_map_node executable
+# ============================================
+# EXPERIENCE MAP NODE (DEPOIS DA GERAÇÃO DOS SERVIÇOS)
+# ============================================
 add_executable(experience_map_node 
   src/experience_map/experience_map_node.cpp
   src/experience_map/experience_map.cpp
-  # src/experience_map/export_map_service.cpp      # <-- ADICIONADO
-  # src/experience_map/map_visualization_exporter.cpp  # <-- ADICIONADO
-  # Os serviços são header-only, não precisam de .cpp
+  src/experience_map/map_manager.cpp
 )
+
 target_include_directories(experience_map_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/experience_map
-  ${JSONCPP_INCLUDE_DIRS}  # <-- ADICIONADO para JSON
+  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp  # <-- ADICIONAR ESTA LINHA!
+  ${JSONCPP_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
 )
+
 target_link_libraries(experience_map_node
   ${Boost_LIBRARIES}
   ${IRRLICHT_LIBRARIES}
   ${OPENGL_LIBRARIES}
-  ${JSONCPP_LIBRARIES}  # <-- ADICIONADO para JSON
+  ${JSONCPP_LIBRARIES}
+  ${YAML_CPP_LIBRARIES}
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
 )
+
 ament_target_dependencies(experience_map_node
   rclcpp
   nav_msgs
@@ -157,8 +179,13 @@ ament_target_dependencies(experience_map_node
   tf2_ros
   tf2_geometry_msgs
   topological_msgs
-  std_srvs  # <-- ADICIONADO
+  std_srvs
+  yaml-cpp
+  rosidl_default_runtime
+  ament_index_cpp
 )
+# Garantir que os serviços sejam gerados antes de compilar o nó
+# add_dependencies(experience_map_node ${PROJECT_NAME}_rosidl_generator_cpp)
 
 # visual_odometry_node executable
 add_executable(visual_odometry_node 
@@ -170,7 +197,6 @@ target_include_directories(visual_odometry_node PRIVATE
 target_link_libraries(visual_odometry_node
   ${OpenCV_LIBRARIES}
 )
-
 ament_target_dependencies(visual_odometry_node
   rclcpp
   sensor_msgs
@@ -178,6 +204,9 @@ ament_target_dependencies(visual_odometry_node
   topological_msgs
 )
 
+# ============================================
+# INSTALAÇÃO
+# ============================================
 install(TARGETS 
   visual_feature_extractor_node
   binary_projector_node
@@ -187,6 +216,12 @@ install(TARGETS
   experience_map_node 
   visual_odometry_node
   DESTINATION lib/${PROJECT_NAME}
+)
+
+# Instalar interfaces dos serviços
+install(DIRECTORY srv/
+  DESTINATION share/${PROJECT_NAME}/srv
+  FILES_MATCHING PATTERN "*.srv"
 )
 
 install(DIRECTORY launch/
