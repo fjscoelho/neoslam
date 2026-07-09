@@ -377,13 +377,13 @@ private:
   {
     action_counter++;
         
-    RCLCPP_DEBUG(this->get_logger(), "EM:action_callback action=%d src=%d dst=%d",
-                 action->action, action->src_id, action->dest_id);
+    RCLCPP_INFO(this->get_logger(), "EM:action_callback action=%d src=%d dst=%d vt_id=%d",
+                 action->action, action->src_id, action->dest_id, action->vt_id);
 
     switch (action->action)
     {
       case topological_msgs::msg::TopologicalAction::CREATE_NODE:
-        em->on_create_experience(action->dest_id, action->header.stamp.sec, action->header.stamp.nanosec);
+        em->on_create_experience(action->dest_id, action->header.stamp.sec, action->header.stamp.nanosec, action->vt_id);
         em->on_set_experience(action->dest_id, 0);
         break;
 

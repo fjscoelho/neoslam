@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <rclcpp/rclcpp.hpp>
+#include "posecell_globals.h"
 
 typedef double Posecell;
 
@@ -86,6 +87,8 @@ public:
   unsigned int get_current_exp_id() { return current_exp; }
 
   double get_relative_rad() { return vt_delta_pc_th * 2.0 * M_PI / PC_DIM_TH; }
+
+  unsigned int get_current_vt_id() const { return current_vt; }
 
   template<typename Archive>
     void save(Archive& ar, const unsigned int version) const

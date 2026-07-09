@@ -91,7 +91,7 @@ public:
   ~ExperienceMap();
 
   // create a new experience for a given position
-  int on_create_experience(unsigned int exp_id, unsigned int seconds, unsigned int nanoseconds);
+  int on_create_experience(unsigned int exp_id, unsigned int seconds, unsigned int nanoseconds, unsigned int vt_id);
   bool on_create_link(int exp_id_from, int exp_id_to, double rel_rad);
 
   Experience *get_experience(int id)

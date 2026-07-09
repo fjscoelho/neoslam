@@ -26,6 +26,18 @@ def generate_launch_description():
     random_matrix_path = os.path.join(pkg_dir, 'random_matrix', 'randomMatrix.bin')
     
     # NeoSLAM nodes
+
+    # New: Add mode manager
+    mode_manager_node = Node(
+        package='neoslam',
+        executable='mode_manager_node',  # Nome do executável
+        name='mode_manager',
+        output='screen',
+        parameters=[{
+            'initial_mode': 'mapping'  # Modo inicial
+        }]
+    )
+
     vfe_node = Node(
         package='neoslam',
         executable='visual_feature_extractor_node',
@@ -128,6 +140,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        mode_manager_node,  # <-- ADICIONADO
         vfe_node,
         bp_node,
         neocortex_node,

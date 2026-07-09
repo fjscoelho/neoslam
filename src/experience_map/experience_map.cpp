@@ -40,19 +40,20 @@ ExperienceMap::~ExperienceMap()
 }
 
 // create a new experience for a given position 
-int ExperienceMap::on_create_experience(unsigned int exp_id, unsigned int seconds, unsigned int nanoseconds){
+int ExperienceMap::on_create_experience(unsigned int exp_id, unsigned int seconds, unsigned int nanoseconds, unsigned int vt_id){
 
   experiences.resize(experiences.size() + 1);
   Experience * new_exp = &(*(experiences.end() - 1));
 
   new_exp->seconds = seconds;
   new_exp->nanoseconds = nanoseconds;
-  
+
   if (experiences.size() == 0)
   {
     new_exp->x_m = 0;
     new_exp->y_m = 0;
     new_exp->th_rad = 0;
+    new_exp->vt_id = 0;
   }
   else
   {
@@ -61,7 +62,7 @@ int ExperienceMap::on_create_experience(unsigned int exp_id, unsigned int second
     new_exp->th_rad = clip_rad_180(accum_delta_facing);
   }
   new_exp->id = experiences.size() - 1;
-
+  new_exp->vt_id = vt_id;
   new_exp->goal_to_current = -1;
   new_exp->current_to_goal = -1;
 

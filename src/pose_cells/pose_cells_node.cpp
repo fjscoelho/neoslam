@@ -4,8 +4,10 @@
 using namespace std;
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include "posecell_network.h"
+#include "posecell_globals.h"  // New: include the PosecellGlobals header for mode management
 #include <topological_msgs/msg/topological_action.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <topological_msgs/msg/view_template.hpp>
@@ -114,31 +116,45 @@ public:
     sub_template = this->create_subscription<topological_msgs::msg::ViewTemplate>(
       topic_root + "/LocalView/Template", 10,
       std::bind(&PoseCellNode::template_callback, this, std::placeholders::_1));
+
+    // ADICIONA O SUBSCRIBER DO MODO
+    mode_subscriber_ = create_subscription<std_msgs::msg::String>(
+      "/system_mode", 10,
+      [this](const std_msgs::msg::String::SharedPtr msg) {
+        current_mode_ = msg->data;
+        // Atualiza a variável global
+        PosecellGlobals::getInstance().setMode(current_mode_);
+        RCLCPP_INFO(get_logger(), "Mode changed to: %s", current_mode_.c_str());
+        applyModeChange();
+      });
+    
+    // Inicializa o modo global com o valor padrão
+    PosecellGlobals::getInstance().setMode("mapping");
     
     RCLCPP_INFO(this->get_logger(), "PoseCell node initialized");
     
-#ifdef HAVE_IRRLICHT
-    use_graphics = this->get_parameter("enable").as_bool();
-    if (use_graphics)
-    {
-      pcs = new PosecellScene(
-        this->get_parameter("posecells_size").as_int(),
-        this->get_parameter("media_path").as_string(),
-        this->get_parameter("image_file").as_string(),
-        pc
-      );
-    }
-#endif
+      #ifdef HAVE_IRRLICHT
+          use_graphics = this->get_parameter("enable").as_bool();
+          if (use_graphics)
+          {
+            pcs = new PosecellScene(
+              this->get_parameter("posecells_size").as_int(),
+              this->get_parameter("media_path").as_string(),
+              this->get_parameter("image_file").as_string(),
+              pc
+            );
+          }
+      #endif
   }
   
   ~PoseCellNode()
   {
     if (pc != nullptr)
       delete pc;
-#ifdef HAVE_IRRLICHT
-    if (pcs != nullptr)
-      delete pcs;
-#endif
+    #ifdef HAVE_IRRLICHT
+        if (pcs != nullptr)
+          delete pcs;
+    #endif
   }
 
 private:
@@ -160,19 +176,20 @@ private:
         pc_output.header.stamp = odo->header.stamp;
         pc_output.dest_id = pc->get_current_exp_id();
         pc_output.relative_rad = pc->get_relative_rad();
+        pc_output.vt_id = pc->get_current_vt_id();
         pub_pc->publish(pc_output);
         
-        RCLCPP_DEBUG(this->get_logger(), "PC:action_publish action=%d src=%d dest=%d",
-                     pc_output.action, pc_output.src_id, pc_output.dest_id);
+        RCLCPP_DEBUG(this->get_logger(), "PC:action_publish action=%d src=%d dest=%d vt_id=%d",
+                     pc_output.action, pc_output.src_id, pc_output.dest_id, pc_output.vt_id);
       }
 
-#ifdef HAVE_IRRLICHT
-      if (use_graphics)
-      {
-        pcs->update_scene();
-        pcs->draw_all();
-      }
-#endif
+        #ifdef HAVE_IRRLICHT
+              if (use_graphics)
+              {
+                pcs->update_scene();
+                pcs->draw_all();
+              }
+        #endif
     }
     prev_time = rclcpp::Time(odo->header.stamp);
   }
@@ -183,14 +200,27 @@ private:
                  vt->current_id, vt->relative_rad);
 
     pc->on_view_template(vt->current_id, vt->relative_rad);
+  
+        #ifdef HAVE_IRRLICHT
+            if (use_graphics)
+            {
+              pcs->update_scene();
+              pcs->draw_all();
+            }
+        #endif
+  }
 
-#ifdef HAVE_IRRLICHT
-    if (use_graphics)
-    {
-      pcs->update_scene();
-      pcs->draw_all();
+  void applyModeChange() 
+  {
+    if (current_mode_ == "mapping") {
+      // Ativa comportamento de mapeamento
+      // Ex: habilita criação de novos landmarks, atualização de mapa
+      RCLCPP_INFO(get_logger(), "PoseCell: MAPPING mode activated");
+    } else if (current_mode_ == "navigation") {
+      // Ativa comportamento de navegação
+      // Ex: desabilita criação de novos landmarks, foca em localização
+      RCLCPP_INFO(get_logger(), "PoseCell: NAVIGATION mode activated");
     }
-#endif
   }
 
   PosecellNetwork* pc = nullptr;
@@ -199,6 +229,8 @@ private:
   rclcpp::Subscription<topological_msgs::msg::ViewTemplate>::SharedPtr sub_template;
   rclcpp::Time prev_time{0, 0, RCL_ROS_TIME};
   topological_msgs::msg::TopologicalAction pc_output;
+  std::string current_mode_ = "mapping";
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr mode_subscriber_;
 
 #ifdef HAVE_IRRLICHT
   PosecellScene *pcs = nullptr;

@@ -204,6 +204,18 @@ ament_target_dependencies(visual_odometry_node
   topological_msgs
 )
 
+# mode_manager_node executable
+add_executable(mode_manager_node 
+  src/mode_manager/mode_manager_node.cpp
+)
+
+ament_target_dependencies(mode_manager_node
+  rclcpp
+  std_msgs
+  std_srvs
+)
+
+
 # ============================================
 # INSTALAÇÃO
 # ============================================
@@ -215,6 +227,7 @@ install(TARGETS
   pose_cells_node 
   experience_map_node 
   visual_odometry_node
+  mode_manager_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
