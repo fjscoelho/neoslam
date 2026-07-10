@@ -1,4 +1,5 @@
 #include "experience_map.h"
+#include "mode_manager/mode_globals.h"  // <-- NOVO INCLUDE
 #include "utils.h"
 
 #include <queue>
@@ -42,6 +43,13 @@ ExperienceMap::~ExperienceMap()
 // create a new experience for a given position 
 int ExperienceMap::on_create_experience(unsigned int exp_id, unsigned int seconds, unsigned int nanoseconds, unsigned int vt_id){
 
+  // Em modo NAVIGATION, NÃO cria experiências
+  if (ModeGlobals::getInstance().isNavigationMode()) {
+    RCLCPP_WARN(rclcpp::get_logger("ExperienceMap"), 
+                "NAVIGATION: Cannot create experiences");
+    return -1;
+  }
+
   experiences.resize(experiences.size() + 1);
   Experience * new_exp = &(*(experiences.end() - 1));
 
@@ -79,16 +87,39 @@ void ExperienceMap::on_odo(double vtrans, double vrot, double time_diff_s)
 {
   vtrans = vtrans * time_diff_s;
   vrot = vrot * time_diff_s;
+
+  // Em modo NAVIGATION, atualiza APENAS a pose odométrica
+  if (ModeGlobals::getInstance().isNavigationMode()) {
+    // Integra a pose da odometria
+    odom_th_ = clip_rad_180(odom_th_ + vrot);
+    odom_x_ += vtrans * cos(odom_th_);
+    odom_y_ += vtrans * sin(odom_th_);
+    use_odom_pose_ = true;
+    
+    RCLCPP_DEBUG(rclcpp::get_logger("ExperienceMap"), 
+                 "NAVIGATION: Odom pose updated: x=%.3f y=%.3f th=%.3f", 
+                 odom_x_, odom_y_, odom_th_);
+    return;
+  }
+
   accum_delta_facing = clip_rad_180(accum_delta_facing + vrot);
   accum_delta_x = accum_delta_x + vtrans * cos(accum_delta_facing);
   accum_delta_y = accum_delta_y + vtrans * sin(accum_delta_facing);
   accum_delta_time_s += time_diff_s;
+
+  // Desativa o uso da pose da odometria (volta ao mapa)
+  use_odom_pose_ = false;
 }
 
 // iterate the experience map. Perform a graph relaxing algorithm to allow
 // the map to partially converge.
 bool ExperienceMap::iterate()
 {
+  // Em modo NAVIGATION, NÃO itera o mapa
+  if (ModeGlobals::getInstance().isNavigationMode()) {
+    return true;  // Não faz nada
+  }
+
   int i;
   unsigned int link_id;
   unsigned int exp_id;
@@ -140,6 +171,15 @@ bool ExperienceMap::iterate()
 // create a link between two experiences
 bool ExperienceMap::on_create_link(int exp_id_from, int exp_id_to, double rel_rad)
 {
+
+  // Em modo NAVIGATION, NÃO cria links
+  if (ModeGlobals::getInstance().isNavigationMode()) {
+    RCLCPP_WARN(rclcpp::get_logger("ExperienceMap"), 
+                "NAVIGATION: Cannot create links");
+    return false;
+  }
+  
+
   Experience * current_exp = &experiences[exp_id_from];
 
   // check if the link already exists
@@ -175,6 +215,13 @@ bool ExperienceMap::on_create_link(int exp_id_from, int exp_id_to, double rel_ra
 // change the current experience
 int ExperienceMap::on_set_experience(int new_exp_id, double rel_rad)
 {
+  // Em modo NAVIGATION, NÃO muda a experiência
+  if (ModeGlobals::getInstance().isNavigationMode()) {
+    RCLCPP_DEBUG(rclcpp::get_logger("ExperienceMap"), 
+                 "NAVIGATION: Experience changes disabled");
+    return 1;
+  }
+  
   if (new_exp_id > experiences.size() - 1)
     return 0;
 

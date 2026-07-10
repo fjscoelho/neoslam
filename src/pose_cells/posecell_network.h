@@ -7,7 +7,6 @@
 #include <stdio.h>
 
 #include <rclcpp/rclcpp.hpp>
-#include "posecell_globals.h"
 
 typedef double Posecell;
 

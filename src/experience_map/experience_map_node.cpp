@@ -14,7 +14,10 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <visualization_msgs/msg/marker.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>  // <-- ESSE É O QUE FALTAVA!
+#include <visualization_msgs/msg/marker_array.hpp>  // <-- New!
+#include <std_msgs/msg/string.hpp>  // <-- New!
+#include "mode_manager/mode_globals.h"  // <-- New
+
 
 // ============================================
 // INCLUDES PARA OS SERVIÇOS E EXPORTAÇÃO
@@ -100,6 +103,10 @@ public:
       this->get_parameter("exp_loops").as_int(),
       this->get_parameter("exp_initial_em_deg").as_double()
     );
+
+    // Inicializa a pose odométrica com a primeira experiência (se houver)
+    // Isso garante que a odometria comece alinhada com o mapa em MAPPING
+    em->resetOdomPose(0.0, 0.0, 0.0);
 
     // Initialize Map Manager with proper directory
     std::string map_dir = "./neoslam_maps/";
@@ -196,7 +203,21 @@ public:
       topic_root + "/ExperienceMap/SetGoalPose", 10,
       std::bind(&ExperienceMapNode::set_goal_pose_callback, this, std::placeholders::_1));
 
-    RCLCPP_INFO(this->get_logger(), "ExperienceMap node initialized");
+   // ADICIONA O SUBSCRIBER DO MODO
+    mode_subscriber_ = this->create_subscription<std_msgs::msg::String>(
+      "/system_mode", 10,
+      [this](const std_msgs::msg::String::SharedPtr msg) {
+        current_mode_ = msg->data;
+        ModeGlobals::getInstance().setMode(current_mode_);
+        RCLCPP_INFO(this->get_logger(), "🔀 ExperienceMap mode changed to: %s", 
+                    current_mode_.c_str());
+        applyModeChange();
+      });
+    
+    // Inicializa o modo
+    std::string initial_mode = ModeGlobals::getInstance().getMode();
+    RCLCPP_INFO(this->get_logger(), "📝 ExperienceMap initial mode: %s", 
+                initial_mode.c_str());
     
 #ifdef HAVE_IRRLICHT
     use_graphics = this->get_parameter("enable").as_bool();
@@ -327,43 +348,54 @@ private:
     {
       double time_diff = (rclcpp::Time(odo->header.stamp) - prev_time).seconds();
       em->on_odo(odo->twist.twist.linear.x, odo->twist.twist.angular.z, time_diff);
-    }
-    
-    if (em->get_current_goal_id() >= 0)
-    {
-      prev_goal_update = rclcpp::Time(odo->header.stamp);
-      em->calculate_path_to_goal(rclcpp::Time(odo->header.stamp).seconds());
 
-      nav_msgs::msg::Path path;
+      // Se estiver em NAVIGATION, publica a pose da odometria
+      if (ModeGlobals::getInstance().isNavigationMode()) {
+        auto [x, y, th] = em->getOdomPose();
+        publishRobotPoseFromOdometry(x, y, th, odo->header.stamp);
+      } 
+    }
+
+
+    // Em MAPPING, o comportamento original continua
+    if (ModeGlobals::getInstance().isMappingMode())
+    {
       if (em->get_current_goal_id() >= 0)
       {
-        em->get_goal_waypoint();
+        prev_goal_update = rclcpp::Time(odo->header.stamp);
+        em->calculate_path_to_goal(rclcpp::Time(odo->header.stamp).seconds());
 
-        geometry_msgs::msg::PoseStamped pose;
-        path.header.stamp = this->now();
-        path.header.frame_id = "map";
-
-        path.poses.clear();
-        unsigned int trace_exp_id = em->get_goals()[0];
-        while (trace_exp_id != em->get_goal_path_final_exp())
+        nav_msgs::msg::Path path;
+        if (em->get_current_goal_id() >= 0)
         {
-          pose.header.stamp = this->now();
-          pose.header.frame_id = "map";  // <-- ADICIONAR ESTA LINHA
-          pose.pose.position.x = em->get_experience(trace_exp_id)->x_m;
-          pose.pose.position.y = em->get_experience(trace_exp_id)->y_m;
-          path.poses.push_back(pose);
+          em->get_goal_waypoint();
 
-          trace_exp_id = em->get_experience(trace_exp_id)->goal_to_current;
+          geometry_msgs::msg::PoseStamped pose;
+          path.header.stamp = this->now();
+          path.header.frame_id = "map";
+
+          path.poses.clear();
+          unsigned int trace_exp_id = em->get_goals()[0];
+          while (trace_exp_id != em->get_goal_path_final_exp())
+          {
+            pose.header.stamp = this->now();
+            pose.header.frame_id = "map";  // <-- ADICIONAR ESTA LINHA
+            pose.pose.position.x = em->get_experience(trace_exp_id)->x_m;
+            pose.pose.position.y = em->get_experience(trace_exp_id)->y_m;
+            path.poses.push_back(pose);
+
+            trace_exp_id = em->get_experience(trace_exp_id)->goal_to_current;
+          }
+
+          pub_goal_path->publish(path);
         }
-
-        pub_goal_path->publish(path);
-      }
-      else
-      {
-        path.header.stamp = this->now();
-        path.header.frame_id = "map";
-        path.poses.clear();
-        pub_goal_path->publish(path);
+        else
+        {
+          path.header.stamp = this->now();
+          path.header.frame_id = "map";
+          path.poses.clear();
+          pub_goal_path->publish(path);
+        }
       }
     }
 
@@ -374,7 +406,14 @@ private:
   }
 
   void action_callback(const topological_msgs::msg::TopologicalAction::SharedPtr action)
-  {
+  { 
+    
+    // Em NAVIGATION, NÃO processa ações que criam/modificam o mapa
+    if (ModeGlobals::getInstance().isNavigationMode()) {
+      RCLCPP_DEBUG(this->get_logger(), 
+                  "EM: NAVIGATION mode - ignoring action %d", action->action);
+      return;
+    }
     action_counter++;
         
     RCLCPP_INFO(this->get_logger(), "EM:action_callback action=%d src=%d dst=%d vt_id=%d",
@@ -614,6 +653,54 @@ private:
     }
   }
 
+  void publishRobotPoseFromOdometry(double x, double y, double th, 
+                                   const builtin_interfaces::msg::Time& stamp)
+  {
+    // Publica a pose no tópico
+    geometry_msgs::msg::PoseStamped pose_output;
+    pose_output.header.stamp = stamp;
+    pose_output.header.frame_id = "map";
+    pose_output.pose.position.x = x;
+    pose_output.pose.position.y = y;
+    pose_output.pose.position.z = 0.0;
+    
+    tf2::Quaternion q;
+    q.setRPY(0, 0, th);
+    pose_output.pose.orientation = tf2::toMsg(q);
+    
+    pub_pose->publish(pose_output);
+
+    // Publica a transformação TF
+    geometry_msgs::msg::TransformStamped tf_transform;
+    tf_transform.header.stamp = stamp;
+    tf_transform.header.frame_id = "map";
+    tf_transform.child_frame_id = "base_link";
+    tf_transform.transform.translation.x = x;
+    tf_transform.transform.translation.y = y;
+    tf_transform.transform.translation.z = 0.0;
+    tf_transform.transform.rotation = tf2::toMsg(q);
+    
+    tf_broadcaster_->sendTransform(tf_transform);
+  }
+  
+  void applyModeChange()
+  {
+    if (ModeGlobals::getInstance().isMappingMode()) {
+      RCLCPP_INFO(this->get_logger(), "🗺️ ExperienceMap: MAPPING mode");
+      em->useExperiencePose();  // Volta a usar a pose do mapa
+    } else if (ModeGlobals::getInstance().isNavigationMode()) {
+      RCLCPP_INFO(this->get_logger(), "🧭 ExperienceMap: NAVIGATION mode");
+      
+      // Reseta a pose odométrica para a posição atual do mapa
+      // Isso garante transição suave de MAPPING para NAVIGATION
+      auto [x, y, th] = em->getCurrentPose();
+      em->resetOdomPose(x, y, th);
+      
+      RCLCPP_INFO(this->get_logger(), "📌 Odom pose initialized at: x=%.3f y=%.3f th=%.3f", 
+                  x, y, th);
+    }
+  }
+
   // ============================================================
   // MEMBROS PRIVADOS
   // ============================================================
@@ -649,6 +736,9 @@ private:
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_all_service_;
   rclcpp::Service<neoslam::srv::ImportMap>::SharedPtr import_map_service_;
   rclcpp::Service<neoslam::srv::ListMaps>::SharedPtr list_maps_service_;
+
+  std::string current_mode_ = "mapping";
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr mode_subscriber_;
   
 #ifdef HAVE_IRRLICHT
   ExperienceMapScene *ems = nullptr;

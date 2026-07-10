@@ -7,7 +7,7 @@ using namespace std;
 #include <std_msgs/msg/string.hpp>
 
 #include "posecell_network.h"
-#include "posecell_globals.h"  // New: include the PosecellGlobals header for mode management
+#include "mode_manager/mode_globals.h"  // <-- NOVO INCLUDE
 #include <topological_msgs/msg/topological_action.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <topological_msgs/msg/view_template.hpp>
@@ -123,15 +123,21 @@ public:
       [this](const std_msgs::msg::String::SharedPtr msg) {
         current_mode_ = msg->data;
         // Atualiza a variável global
-        PosecellGlobals::getInstance().setMode(current_mode_);
-        RCLCPP_INFO(get_logger(), "Mode changed to: %s", current_mode_.c_str());
+        ModeGlobals::getInstance().setMode(current_mode_);
+        RCLCPP_INFO(get_logger(), "🔀 PoseCell mode changed to: %s", current_mode_.c_str());
         applyModeChange();
       });
     
-    // Inicializa o modo global com o valor padrão
-    PosecellGlobals::getInstance().setMode("mapping");
+    // Inicializa o modo global com o valor atual (se já existir)
+    // Caso contrário, usa "mapping" como padrão
+    std::string initial_mode = "mapping";
+    try {
+      initial_mode = ModeGlobals::getInstance().getMode();
+    } catch (...) {
+      ModeGlobals::getInstance().setMode("mapping");
+    }
     
-    RCLCPP_INFO(this->get_logger(), "PoseCell node initialized");
+    RCLCPP_INFO(this->get_logger(), "📝 PoseCell initial mode: %s", initial_mode.c_str());
     
       #ifdef HAVE_IRRLICHT
           use_graphics = this->get_parameter("enable").as_bool();
@@ -210,16 +216,14 @@ private:
         #endif
   }
 
-  void applyModeChange() 
+  void applyModeChange()
   {
-    if (current_mode_ == "mapping") {
-      // Ativa comportamento de mapeamento
-      // Ex: habilita criação de novos landmarks, atualização de mapa
-      RCLCPP_INFO(get_logger(), "PoseCell: MAPPING mode activated");
-    } else if (current_mode_ == "navigation") {
-      // Ativa comportamento de navegação
-      // Ex: desabilita criação de novos landmarks, foca em localização
-      RCLCPP_INFO(get_logger(), "PoseCell: NAVIGATION mode activated");
+    if (ModeGlobals::getInstance().isMappingMode()) {
+      RCLCPP_INFO(get_logger(), "🗺️ PoseCell: MAPPING mode activated");
+      // Habilita criação de experiências
+    } else if (ModeGlobals::getInstance().isNavigationMode()) {
+      RCLCPP_INFO(get_logger(), "🧭 PoseCell: NAVIGATION mode activated");
+      // Desabilita criação de experiências
     }
   }
 

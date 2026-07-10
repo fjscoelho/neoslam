@@ -132,8 +132,10 @@ ament_target_dependencies(spatial_view_cells_node
 add_executable(pose_cells_node  
   src/pose_cells/pose_cells_node.cpp
   src/pose_cells/posecell_network.cpp)
+
 target_include_directories(pose_cells_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pose_cells
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
 )
 target_link_libraries(pose_cells_node
   ${IRRLICHT_LIBRARIES}
@@ -156,6 +158,7 @@ add_executable(experience_map_node
 
 target_include_directories(experience_map_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/experience_map
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
   ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp  # <-- ADICIONAR ESTA LINHA!
   ${JSONCPP_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
@@ -207,6 +210,11 @@ ament_target_dependencies(visual_odometry_node
 # mode_manager_node executable
 add_executable(mode_manager_node 
   src/mode_manager/mode_manager_node.cpp
+)
+
+# Adiciona os includes do mode_manager
+target_include_directories(mode_manager_node PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include
 )
 
 ament_target_dependencies(mode_manager_node
@@ -264,6 +272,12 @@ install(DIRECTORY config/
 
 # Install headers
 install(DIRECTORY src/
+  DESTINATION include/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.h"
+)
+
+# Instalar headers do mode_manager
+install(DIRECTORY src/mode_manager/include/
   DESTINATION include/${PROJECT_NAME}
   FILES_MATCHING PATTERN "*.h"
 )

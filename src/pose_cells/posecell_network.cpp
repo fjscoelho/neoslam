@@ -1,4 +1,5 @@
 #include "posecell_network.h"
+#include "mode_manager/mode_globals.h"  // <-- NOVO INCLUDE
 
 #include <stdlib.h>
 #include <string.h>
@@ -860,7 +861,7 @@ double PosecellNetwork::norm2d(double var, int x, int y, int z, int dim_centre)
 void PosecellNetwork::create_experience()
 {
   // Verify if the system is in mapping mode before creating a new experience
-  if (!PosecellGlobals::getInstance().isMappingMode()) {
+  if (!ModeGlobals::getInstance().isMappingMode()) {
     // On navigation mode, skip experience creation and log the event
     RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"), 
                  "NAVIGATION mode: Skipping experience creation");
@@ -884,7 +885,7 @@ void PosecellNetwork::create_experience()
 PosecellNetwork::PosecellAction PosecellNetwork::get_action()
 {
   // Em modo navigation, vou ainda determinar o comportamento, mas não criar ou modificar o grafo de experiências
-  if (PosecellGlobals::getInstance().isNavigationMode()) {
+  if (ModeGlobals::getInstance().isNavigationMode()) {
     // Em modo navigation, pode querer apenas localizar, não criar
     // ou modificar o grafo de experiências
     // Exemplo: retornar NO_ACTION para não modificar o mapa
@@ -1022,7 +1023,7 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
   PosecellVisualTemplate * pcvt;
 
    // Em modo navigation, processa de forma diferente
-  if (PosecellGlobals::getInstance().isNavigationMode()) {
+  if (ModeGlobals::getInstance().isNavigationMode()) {
     // Navegação: apenas atualiza a pose, não cria novos templates
     if (vt >= visual_templates.size()) {
       // Se o template não existe, não cria (diferente do mapping)

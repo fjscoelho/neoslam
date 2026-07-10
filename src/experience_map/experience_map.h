@@ -3,6 +3,7 @@
 
 #define _USE_MATH_DEFINES
 #include "math.h"
+#include "utils.h"
 
 #include <stdio.h>
 #include <vector>
@@ -98,6 +99,12 @@ public:
   {
     return &experiences[id];
   }
+
+  const Experience *get_experience(int id) const
+  {
+    return &experiences[id];
+  }
+  
   Link * get_link(int id)
   {
     return &links[id];
@@ -242,6 +249,70 @@ public:
         }
     }
 
+    /**
+     * @brief Atualiza a pose odométrica (usada em NAVIGATION)
+     * @param vtrans Velocidade linear (m/s)
+     * @param vrot Velocidade angular (rad/s)
+     * @param time_diff_s Diferença de tempo (s)
+     */
+    void updateOdomPose(double vtrans, double vrot, double time_diff_s) {
+      vtrans = vtrans * time_diff_s;
+      vrot = vrot * time_diff_s;
+      odom_th_ = clip_rad_180(odom_th_ + vrot);
+      odom_x_ += vtrans * cos(odom_th_);
+      odom_y_ += vtrans * sin(odom_th_);
+      use_odom_pose_ = true;
+    }
+
+    /**
+     * @brief Reseta a pose odométrica para uma posição específica
+     * @param x Posição x (m)
+     * @param y Posição y (m)
+     * @param th Orientação (rad)
+     */
+      void resetOdomPose(double x, double y, double th) {
+        odom_x_ = x;
+        odom_y_ = y;
+        odom_th_ = th;
+        use_odom_pose_ = true;
+      }
+    
+    /**
+     * @brief Retorna à pose do Experience Map (modo MAPPING)
+     */
+      void useExperiencePose() {
+        use_odom_pose_ = false;
+      }
+
+      /**
+   * @brief Obtém a pose atual do robô (dependendo do modo)
+   * @return std::tuple<double, double, double> (x, y, theta)
+   */
+      std::tuple<double, double, double> getCurrentPose() const {
+        if (use_odom_pose_) {
+          return std::make_tuple(odom_x_, odom_y_, odom_th_);
+        } else {
+          // Usa a pose da experiência atual
+          const Experience* exp = get_experience(current_exp_id);
+          if (exp != nullptr) {
+            return std::make_tuple(exp->x_m, exp->y_m, clip_rad_180(exp->th_rad + relative_rad));
+          }
+          return std::make_tuple(0.0, 0.0, 0.0);
+        }
+      }
+      
+      /**
+       * @brief Obtém a pose da odometria (x, y, theta)
+       */
+      std::tuple<double, double, double> getOdomPose() const {
+        return std::make_tuple(odom_x_, odom_y_, odom_th_);
+      }
+      
+      /**
+       * @brief Verifica se está usando pose da odometria
+       */
+      bool isUsingOdomPose() const { return use_odom_pose_; }
+
   template<typename Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
@@ -304,6 +375,12 @@ private:
   bool goal_success;
   double goal_timeout_s;
   unsigned int goal_path_final_exp_id;
+
+  // Pose da odometria (usada em NAVIGATION) - integrada a partir dos twists
+  double odom_x_ = 0.0;
+  double odom_y_ = 0.0;
+  double odom_th_ = 0.0;
+  bool use_odom_pose_ = false;
 
 };
 
