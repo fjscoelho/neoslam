@@ -313,6 +313,36 @@ public:
        */
       bool isUsingOdomPose() const { return use_odom_pose_; }
 
+    /**
+     * @brief Corrige a pose do robô para a pose de uma experiência existente
+     * @param exp_id ID da experiência destino
+     * @param rel_rad Orientação relativa (radianos)
+     * @return true se a correção foi aplicada com sucesso
+     */
+    bool correctPoseToExperience(int exp_id, double rel_rad = 0.0) {
+      if (exp_id < 0 || exp_id >= static_cast<int>(experiences.size())) {
+        return false;
+      }
+      
+      const Experience& exp = experiences[exp_id];
+      
+      // Corrige a pose da odometria
+      odom_x_ = exp.x_m;
+      odom_y_ = exp.y_m;
+      odom_th_ = clip_rad_180(exp.th_rad + rel_rad);
+      use_odom_pose_ = true;
+      
+      // Atualiza também a experiência atual (opcional, para navegação)
+      current_exp_id = exp_id;
+      relative_rad = rel_rad;
+      
+      RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+                  "🔁 Pose corrected to experience %d: x=%.3f y=%.3f th=%.3f", 
+                  exp_id, odom_x_, odom_y_, odom_th_);
+      
+      return true;
+    }
+
   template<typename Archive>
     void serialize(Archive& ar, const unsigned int version)
     {

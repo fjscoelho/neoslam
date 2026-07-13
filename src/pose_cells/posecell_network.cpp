@@ -865,7 +865,7 @@ void PosecellNetwork::create_experience()
     // On navigation mode, skip experience creation and log the event
     RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"), 
                  "NAVIGATION mode: Skipping experience creation");
-    return;
+    // return;
   }
   PosecellVisualTemplate * pcvt = &visual_templates[current_vt];
   experiences.resize(experiences.size() + 1);
@@ -885,7 +885,7 @@ void PosecellNetwork::create_experience()
 PosecellNetwork::PosecellAction PosecellNetwork::get_action()
 {
   // Em modo navigation, vou ainda determinar o comportamento, mas não criar ou modificar o grafo de experiências
-  if (ModeGlobals::getInstance().isNavigationMode()) {
+  /* if (ModeGlobals::getInstance().isNavigationMode()) {
     // Em modo navigation, pode querer apenas localizar, não criar
     // ou modificar o grafo de experiências
     // Exemplo: retornar NO_ACTION para não modificar o mapa
@@ -896,6 +896,8 @@ PosecellNetwork::PosecellAction PosecellNetwork::get_action()
     }
     return NO_ACTION;
   }
+    */
+  
   // Regular behavior in mapping mode: create experiences and edges as needed
   PosecellExperience * experience;
   double delta_pc;
@@ -1023,7 +1025,7 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
   PosecellVisualTemplate * pcvt;
 
    // Em modo navigation, processa de forma diferente
-  if (ModeGlobals::getInstance().isNavigationMode()) {
+  /* if (ModeGlobals::getInstance().isNavigationMode()) {
     // Navegação: apenas atualiza a pose, não cria novos templates
     if (vt >= visual_templates.size()) {
       // Se o template não existe, não cria (diferente do mapping)
@@ -1032,6 +1034,7 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
       return; // conferir se vou precisar atualizar o bollean aqui: vt_update = true;
     } 
   }
+  */
 
   if (vt >= visual_templates.size())
   {

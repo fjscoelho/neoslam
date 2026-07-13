@@ -187,6 +187,10 @@ public:
     pub_rviz_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       topic_root + "/ExperienceMap/RVizMarkers", 10);
 
+    // Publisher para o marker da experiência atual (NAVIGATION)
+    pub_nav_marker_ = this->create_publisher<visualization_msgs::msg::Marker>(
+    topic_root + "/ExperienceMap/NavigationMarker", 10);
+
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     RCLCPP_INFO(this->get_logger(), "TF broadcaster initialized");
     
@@ -349,13 +353,12 @@ private:
       double time_diff = (rclcpp::Time(odo->header.stamp) - prev_time).seconds();
       em->on_odo(odo->twist.twist.linear.x, odo->twist.twist.angular.z, time_diff);
 
-      // Se estiver em NAVIGATION, publica a pose da odometria
+      // Se estiver em NAVIGATION, publica a pose da odometria (integrada)
       if (ModeGlobals::getInstance().isNavigationMode()) {
         auto [x, y, th] = em->getOdomPose();
         publishRobotPoseFromOdometry(x, y, th, odo->header.stamp);
       } 
     }
-
 
     // Em MAPPING, o comportamento original continua
     if (ModeGlobals::getInstance().isMappingMode())
@@ -400,20 +403,81 @@ private:
     }
 
     prev_time = rclcpp::Time(odo->header.stamp);
-    
-    std::cout << "Current Exp: " << em->get_current_id() << " | Total Exps: " << em->get_num_experiences() << " | Total actions: " << action_counter << std::endl;
+  
+    std::cout << "Current Exp: " << em->get_current_id() 
+              << " | Total Exps: " << em->get_num_experiences() 
+              << " | Total actions: " << action_counter 
+              << std::endl;
     std::cout.flush();
   }
 
   void action_callback(const topological_msgs::msg::TopologicalAction::SharedPtr action)
   { 
     
-    // Em NAVIGATION, NÃO processa ações que criam/modificam o mapa
+    /// Em NAVIGATION, processa apenas ações de loop closure (CREATE_EDGE)
     if (ModeGlobals::getInstance().isNavigationMode()) {
-      RCLCPP_DEBUG(this->get_logger(), 
-                  "EM: NAVIGATION mode - ignoring action %d", action->action);
-      return;
+        // Verifica se é uma ação de loop closure
+        if (action->action == topological_msgs::msg::TopologicalAction::CREATE_EDGE) {
+            RCLCPP_INFO(this->get_logger(), 
+                        "🧭 NAVIGATION: Loop closure detected! Correcting pose to experience %d", 
+                        action->dest_id);
+            
+            // Corrige a pose para a experiência destino
+            bool success = em->correctPoseToExperience(action->dest_id, action->relative_rad);
+            
+            if (success) {
+              auto [x, y, th] = em->getOdomPose();
+              publishRobotPoseFromOdometry(x, y, th, action->header.stamp);
+              
+              RCLCPP_INFO(this->get_logger(), 
+                          "✅ Pose corrected to: x=%.3f y=%.3f th=%.3f", 
+                          x, y, th);
+
+              // ============================================
+              // PUBLICAR VIA MARKERARRAY (MAIS CONFIÁVEL)
+              // ============================================
+              visualization_msgs::msg::MarkerArray nav_marker_array;
+              
+              // Marker vermelho grande
+              visualization_msgs::msg::Marker marker;
+              marker.header.frame_id = "map";
+              marker.header.stamp = action->header.stamp;
+              marker.ns = "navigation_marker";
+              marker.id = 999;
+              marker.type = visualization_msgs::msg::Marker::SPHERE;
+              marker.action = visualization_msgs::msg::Marker::ADD;
+              marker.scale.x = 0.20;
+              marker.scale.y = 0.20;
+              marker.scale.z = 0.20;
+              marker.color.r = 1.0;
+              marker.color.g = 0.5;
+              marker.color.b = 0.0;
+              marker.color.a = 1.0;
+              marker.pose.position.x = x;
+              marker.pose.position.y = y;
+              marker.pose.position.z = 0.0;
+              marker.pose.orientation.w = 1.0;
+              
+              nav_marker_array.markers.push_back(marker);
+              
+              // Publica no tópico que você já usa
+              pub_rviz_markers_->publish(nav_marker_array);
+              
+              RCLCPP_INFO(this->get_logger(), "🔴 NAVIGATION MARKER published at (%.2f, %.2f)", x, y);
+
+          } else {
+              RCLCPP_WARN(this->get_logger(), 
+                          "❌ Failed to correct pose to experience %d", 
+                          action->dest_id);
+          }
+        } else {
+            // Outras ações são ignoradas em NAVIGATION
+            RCLCPP_DEBUG(this->get_logger(), 
+                        "EM: NAVIGATION mode - ignoring action %d", action->action);
+        }
+        return;
     }
+
     action_counter++;
         
     RCLCPP_INFO(this->get_logger(), "EM:action_callback action=%d src=%d dst=%d vt_id=%d",
@@ -614,9 +678,9 @@ private:
     current_marker.id = 2;
     current_marker.type = visualization_msgs::msg::Marker::SPHERE;
     current_marker.action = visualization_msgs::msg::Marker::ADD;
-    current_marker.scale.x = 0.15;
-    current_marker.scale.y = 0.15;
-    current_marker.scale.z = 0.15;
+    current_marker.scale.x = 0.20;
+    current_marker.scale.y = 0.20;
+    current_marker.scale.z = 0.20;
     current_marker.color.r = 1.0;
     current_marker.color.g = 0.0;
     current_marker.color.b = 0.0;
@@ -684,22 +748,23 @@ private:
   }
   
   void applyModeChange()
-  {
-    if (ModeGlobals::getInstance().isMappingMode()) {
-      RCLCPP_INFO(this->get_logger(), "🗺️ ExperienceMap: MAPPING mode");
-      em->useExperiencePose();  // Volta a usar a pose do mapa
-    } else if (ModeGlobals::getInstance().isNavigationMode()) {
-      RCLCPP_INFO(this->get_logger(), "🧭 ExperienceMap: NAVIGATION mode");
-      
-      // Reseta a pose odométrica para a posição atual do mapa
-      // Isso garante transição suave de MAPPING para NAVIGATION
-      auto [x, y, th] = em->getCurrentPose();
-      em->resetOdomPose(x, y, th);
-      
-      RCLCPP_INFO(this->get_logger(), "📌 Odom pose initialized at: x=%.3f y=%.3f th=%.3f", 
-                  x, y, th);
-    }
+{
+  if (ModeGlobals::getInstance().isMappingMode()) {
+    RCLCPP_INFO(this->get_logger(), "🗺️ ExperienceMap: MAPPING mode");
+    em->useExperiencePose();  // Volta a usar a pose do mapa
+  } else if (ModeGlobals::getInstance().isNavigationMode()) {
+    RCLCPP_INFO(this->get_logger(), "🧭 ExperienceMap: NAVIGATION mode");
+    
+    // Reseta a pose odométrica para a posição atual do mapa
+    // Isso garante transição suave de MAPPING para NAVIGATION
+    auto [x, y, th] = em->getCurrentPose();
+    em->resetOdomPose(x, y, th);
+    em->useExperiencePose();  // Inicia em NAVIGATION com a pose atual do mapa
+    
+    RCLCPP_INFO(this->get_logger(), "📌 Odom pose initialized at: x=%.3f y=%.3f th=%.3f", 
+                x, y, th);
   }
+}
 
   // ============================================================
   // MEMBROS PRIVADOS
@@ -714,6 +779,8 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_em_markers;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_goal_path;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_rviz_markers_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_nav_marker_;
+
   
   // Subscritores
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry;

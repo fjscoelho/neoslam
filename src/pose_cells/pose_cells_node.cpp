@@ -185,7 +185,7 @@ private:
         pc_output.vt_id = pc->get_current_vt_id();
         pub_pc->publish(pc_output);
         
-        RCLCPP_DEBUG(this->get_logger(), "PC:action_publish action=%d src=%d dest=%d vt_id=%d",
+        RCLCPP_INFO(this->get_logger(), "PC:action_publish action=%d src=%d dest=%d vt_id=%d",
                      pc_output.action, pc_output.src_id, pc_output.dest_id, pc_output.vt_id);
       }
 
