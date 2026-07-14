@@ -215,10 +215,33 @@ bool ExperienceMap::on_create_link(int exp_id_from, int exp_id_to, double rel_ra
 // change the current experience
 int ExperienceMap::on_set_experience(int new_exp_id, double rel_rad)
 {
-  // Em modo NAVIGATION, NÃO muda a experiência
+  // ============================================
+  // MODIFICADO: Em NAVIGATION, atualiza APENAS o current_exp_id
+  // mas NÃO modifica o mapa (não cria links/nós)
+  // ============================================
   if (ModeGlobals::getInstance().isNavigationMode()) {
+    if (new_exp_id < 0 || new_exp_id >= (int)experiences.size()) {
+      return 0;
+    }
+    
+    // Atualiza a experiência atual
+    prev_exp_id = current_exp_id;
+    current_exp_id = new_exp_id;
+    
+    // Atualiza a pose odométrica para a nova experiência
+    const Experience& exp = experiences[current_exp_id];
+    odom_x_ = exp.x_m;
+    odom_y_ = exp.y_m;
+    odom_th_ = clip_rad_180(exp.th_rad + rel_rad);
+    use_odom_pose_ = true;
+    
+    // NÃO modifica accum_delta_* (não estamos criando links)
+    // NÃO modifica o mapa
+    
     RCLCPP_DEBUG(rclcpp::get_logger("ExperienceMap"), 
-                 "NAVIGATION: Experience changes disabled");
+                 "NAVIGATION: Current experience set to %d (pose: %.2f, %.2f)", 
+                 current_exp_id, odom_x_, odom_y_);
+    
     return 1;
   }
   

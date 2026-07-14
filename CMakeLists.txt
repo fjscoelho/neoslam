@@ -62,6 +62,7 @@ add_definitions("-DHAVE_IRRLICHT")
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ImportMap.srv"
   "srv/ListMaps.srv"
+  "srv/SetGoal.srv"  # <-- NOVO
   DEPENDENCIES builtin_interfaces
 )
 
