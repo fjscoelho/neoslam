@@ -465,23 +465,25 @@ double ExperienceMap::dijkstra_distance_between_experiences(int id1, int id2)
 
 bool ExperienceMap::calculate_path_to_goal(double time_s)
 { 
-
   // ============================================
   // FORÇAR RESET DO TIMEOUT A CADA CHAMADA
   // ============================================
-  // Isso garante que o Dijkstra seja executado sempre
   goal_timeout_s = 0;
   
-  RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-              "🔍 [calculate_path_to_goal] START - time_s: %.3f", time_s);
-  RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-              "🔍 [calculate_path_to_goal] current_exp_id: %d", current_exp_id);
-  RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-              "🔍 [calculate_path_to_goal] goal_list size: %zu", goal_list.size());
+  // ============================================
+  // REMOVER: Logs de entrada (deixar apenas se necessário para debug)
+  // ============================================
+  // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+  //             "🔍 [calculate_path_to_goal] START - time_s: %.3f", time_s);
+  // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+  //             "🔍 [calculate_path_to_goal] current_exp_id: %d", current_exp_id);
+  // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+  //             "🔍 [calculate_path_to_goal] goal_list size: %zu", goal_list.size());
   
+  // Manter apenas se goal_list > 0 (comentar o resto)
   if (goal_list.size() > 0) {
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "🔍 [calculate_path_to_goal] first goal: %d", goal_list[0]);
+    // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //             "🔍 [calculate_path_to_goal] first goal: %d", goal_list[0]);
   }
 
   unsigned int id;
@@ -493,7 +495,6 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
     return false;
   }
 
-  // Verificar se o current_exp_id é válido
   if (current_exp_id < 0 || current_exp_id >= (int)experiences.size()) {
     RCLCPP_ERROR(rclcpp::get_logger("ExperienceMap"), 
                  "❌ [calculate_path_to_goal] current_exp_id %d is INVALID! (size: %zu)", 
@@ -501,12 +502,15 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
     return false;
   }
 
-  // check if we are within thres of the goal or timeout
   double dist_to_goal = exp_euclidean_m(&experiences[current_exp_id], &experiences[goal_list[0]]);
-  RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-              "🔍 [calculate_path_to_goal] dist_to_goal: %.3f, threshold: 0.2", dist_to_goal);
   
-  if (dist_to_goal < 0.2 || ((goal_timeout_s != 0) && time_s > goal_timeout_s))
+  // ============================================
+  // REMOVER: Log da distância (ou manter apenas em DEBUG)
+  // ============================================
+  // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+  //             "🔍 [calculate_path_to_goal] dist_to_goal: %.3f, threshold: 0.2", dist_to_goal);
+  
+  if (dist_to_goal < 0.25 || ((goal_timeout_s != 0) && time_s > goal_timeout_s))
   {
     RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
                 "✅ [calculate_path_to_goal] GOAL REACHED or TIMEOUT!");
@@ -517,7 +521,7 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
                   "⏰ [calculate_path_to_goal] TIMEOUT! time_s: %.3f, timeout: %.3f", 
                   time_s, goal_timeout_s);
     }
-    if (dist_to_goal < 0.2)
+    if (dist_to_goal < 0.25)
     {
       goal_success = true;
       RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
@@ -542,6 +546,9 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
 
   if (goal_timeout_s == 0)
   {
+    // ============================================
+    // MANTER: Log do Dijkstra (útil para saber que está funcionando)
+    // ============================================
     RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
                 "🔍 [calculate_path_to_goal] Starting Dijkstra from exp %d to goal %d", 
                 current_exp_id, goal_list[0]);
@@ -549,7 +556,6 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
     double link_time_s;
     std::priority_queue<Experience*, std::vector<Experience*>, compare> exp_heap;
 
-    // Inicializar distâncias
     for (id = 0; id < experiences.size(); id++)
     {
       experiences[id].time_from_current_s = DBL_MAX;
@@ -559,8 +565,11 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
     experiences[current_exp_id].time_from_current_s = 0;
     goal_path_final_exp_id = current_exp_id;
     
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "🔍 [calculate_path_to_goal] Initialized Dijkstra, heap size: %zu", exp_heap.size());
+    // ============================================
+    // REMOVER: Log do heap size
+    // ============================================
+    // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //             "🔍 [calculate_path_to_goal] Initialized Dijkstra, heap size: %zu", exp_heap.size());
 
     std::make_heap(const_cast<Experience**>(&exp_heap.top()),
                    const_cast<Experience**>(&exp_heap.top()) + exp_heap.size(), compare());
@@ -580,7 +589,6 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
       }
       exp_heap.pop();
 
-      // Explorar links de saída (links_to)
       for (id = 0; id < exp->links_to.size(); id++)
       {
         Link *link = &links[exp->links_to[id]];
@@ -592,7 +600,6 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
         }
       }
 
-      // Explorar links de entrada (links_from)
       for (id = 0; id < exp->links_from.size(); id++)
       {
         Link *link = &links[exp->links_from[id]];
@@ -608,31 +615,29 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
         std::make_heap(const_cast<Experience**>(&exp_heap.top()),
                        const_cast<Experience**>(&exp_heap.top()) + exp_heap.size(), compare());
 
-      // Se encontrou o goal, para
       if (exp->id == goal_list[0]) {
+        // ============================================
+        // MANTER: Log do goal encontrado (útil)
+        // ============================================
         RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                    "✅ [calculate_path_to_goal] GOAL FOUND! Exp %d, time: %.3f, iterations: %d", 
-                    exp->id, exp->time_from_current_s, iterations);
+                    "✅ [calculate_path_to_goal] GOAL FOUND! Exp %d, distance: %.3f m", 
+                    exp->id, exp->time_from_current_s);
         break;
       }
     }
 
     // ============================================
-    // LOG DO CAMINHO ENCONTRADO
+    // REMOVER: Logs de reconstrução do caminho (poluem muito!)
     // ============================================
     unsigned int trace_exp_id = goal_list[0];
     int path_length = 0;
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "🔍 [calculate_path_to_goal] Reconstructing path from goal %d to current %d", 
-                goal_list[0], current_exp_id);
+    // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //             "🔍 [calculate_path_to_goal] Reconstructing path from goal %d to current %d", 
+    //             goal_list[0], current_exp_id);
     
     while (trace_exp_id != current_exp_id)
     {
       path_length++;
-      RCLCPP_DEBUG(rclcpp::get_logger("ExperienceMap"), 
-                   "🔍 [calculate_path_to_goal] Path step %d: exp %d -> goal_to_current %d", 
-                   path_length, trace_exp_id, experiences[trace_exp_id].goal_to_current);
-      
       if (experiences[trace_exp_id].goal_to_current == -1 || 
           experiences[trace_exp_id].goal_to_current >= experiences.size()) {
         RCLCPP_ERROR(rclcpp::get_logger("ExperienceMap"), 
@@ -645,46 +650,52 @@ bool ExperienceMap::calculate_path_to_goal(double time_s)
       trace_exp_id = experiences[trace_exp_id].goal_to_current;
     }
     
+    // ============================================
+    // MANTER: Log do comprimento do caminho (útil)
+    // ============================================
     RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
                 "🔍 [calculate_path_to_goal] Path length: %d experiences", path_length);
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "🔍 [calculate_path_to_goal] goal_path_final_exp_id: %d", goal_path_final_exp_id);
     
     // ============================================
-    // LOG DAS EXPERIÊNCIAS NO CAMINHO
+    // REMOVER: Log de cada experiência no caminho (polui muito!)
     // ============================================
-    trace_exp_id = goal_list[0];
-    int step = 0;
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "📋 [calculate_path_to_goal] PATH from goal to current:");
-    while (trace_exp_id != current_exp_id && step < 100) {
-      Experience* exp = &experiences[trace_exp_id];
-      RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                  "  Step %d: exp %d (x=%.2f, y=%.2f) -> goal_to_current %d", 
-                  step, trace_exp_id, exp->x_m, exp->y_m, exp->goal_to_current);
-      step++;
-      if (step >= 100) {
-        RCLCPP_WARN(rclcpp::get_logger("ExperienceMap"), 
-                    "⚠️ [calculate_path_to_goal] Too many steps (>100), breaking loop");
-        break;
-      }
-      trace_exp_id = exp->goal_to_current;
-    }
-    RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-                "📋 [calculate_path_to_goal] Final exp %d (current)", current_exp_id);
+    // trace_exp_id = goal_list[0];
+    // int step = 0;
+    // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //             "📋 [calculate_path_to_goal] PATH from goal to current:");
+    // while (trace_exp_id != current_exp_id && step < 100) {
+    //   Experience* exp = &experiences[trace_exp_id];
+    //   RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //               "  Step %d: exp %d (x=%.2f, y=%.2f) -> goal_to_current %d", 
+    //               step, trace_exp_id, exp->x_m, exp->y_m, exp->goal_to_current);
+    //   step++;
+    //   if (step >= 100) {
+    //     RCLCPP_WARN(rclcpp::get_logger("ExperienceMap"), 
+    //                 "⚠️ [calculate_path_to_goal] Too many steps (>100), breaking loop");
+    //     break;
+    //   }
+    //   trace_exp_id = exp->goal_to_current;
+    // }
+    // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+    //             "📋 [calculate_path_to_goal] Final exp %d (current)", current_exp_id);
 
-    // means we need a new time out
     if (goal_timeout_s == 0)
     {
       goal_timeout_s = time_s + experiences[goal_list[0]].time_from_current_s;
+      // ============================================
+      // MANTER: Log do timeout (útil)
+      // ============================================
       RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
                   "⏰ [calculate_path_to_goal] Timeout set to: %.3f (in %.1f s)", 
                   goal_timeout_s, goal_timeout_s - time_s);
     }
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
-              "🔍 [calculate_path_to_goal] END - returning true");
+  // ============================================
+  // REMOVER: Log de END
+  // ============================================
+  // RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
+  //             "🔍 [calculate_path_to_goal] END - returning true");
   return true;
 }
 

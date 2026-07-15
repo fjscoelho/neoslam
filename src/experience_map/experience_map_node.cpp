@@ -403,9 +403,9 @@ class ExperienceMapNode : public rclcpp::Node
         // ============================================
         if (em->get_current_goal_id() >= 0)
         { 
-          RCLCPP_DEBUG(this->get_logger(), "📊 [odo] Recalculating path...");
-          RCLCPP_DEBUG(this->get_logger(), "📊 Current exp: %d, Goal: %d", 
-                      em->get_current_id(), em->get_current_goal_id());
+          // RCLCPP_DEBUG(this->get_logger(), "📊 [odo] Recalculating path...");
+          // RCLCPP_DEBUG(this->get_logger(), "📊 Current exp: %d, Goal: %d", 
+          //             em->get_current_id(), em->get_current_goal_id());
 
           // ============================================
           // FORÇAR RESET DO TIMEOUT ANTES DE CADA CÁLCULO
@@ -533,9 +533,9 @@ class ExperienceMapNode : public rclcpp::Node
                 // ============================================
                 if (em->get_current_goal_id() >= 0) {
                   RCLCPP_INFO(this->get_logger(), "🔄 Replanning path after loop closure");
-                  RCLCPP_INFO(this->get_logger(), "📊 Current exp: %d, Goal exp: %d", 
-                              em->get_current_id(), em->get_current_goal_id());
-                  RCLCPP_INFO(this->get_logger(), "📊 Total experiences: %d", em->get_num_experiences());
+                  // RCLCPP_INFO(this->get_logger(), "📊 Current exp: %d, Goal exp: %d", 
+                  //             em->get_current_id(), em->get_current_goal_id());
+                  // RCLCPP_INFO(this->get_logger(), "📊 Total experiences: %d", em->get_num_experiences());
                   
                   // Reset distances
                   for (int id = 0; id < em->get_num_experiences(); id++) {
