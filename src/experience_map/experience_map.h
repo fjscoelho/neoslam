@@ -335,12 +335,21 @@ public:
       // Atualiza também a experiência atual (opcional, para navegação)
       current_exp_id = exp_id;
       relative_rad = rel_rad;
+
+      // ============================================
+      // RESETAR TIMEOUT to force replan after changing experience
+      // ============================================
+      goal_timeout_s = 0;
       
       RCLCPP_INFO(rclcpp::get_logger("ExperienceMap"), 
                   "🔁 Pose corrected to experience %d: x=%.3f y=%.3f th=%.3f", 
                   exp_id, odom_x_, odom_y_, odom_th_);
       
       return true;
+    }
+
+    void resetGoalTimeout() {
+        goal_timeout_s = 0;
     }
 
   template<typename Archive>

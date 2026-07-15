@@ -402,7 +402,32 @@ class ExperienceMapNode : public rclcpp::Node
         // NOVO: Path Planning em AMBOS os modos
         // ============================================
         if (em->get_current_goal_id() >= 0)
-        {
+        { 
+          RCLCPP_DEBUG(this->get_logger(), "📊 [odo] Recalculating path...");
+          RCLCPP_DEBUG(this->get_logger(), "📊 Current exp: %d, Goal: %d", 
+                      em->get_current_id(), em->get_current_goal_id());
+
+          // ============================================
+          // FORÇAR RESET DO TIMEOUT ANTES DE CADA CÁLCULO
+          // ============================================
+          for (int id = 0; id < em->get_num_experiences(); id++) {
+              Experience* exp = em->get_experience(id);
+              if (exp != nullptr) {
+                  exp->time_from_current_s = DBL_MAX;
+                  exp->goal_to_current = -1;
+                  exp->current_to_goal = -1;
+              }
+          }
+          // Resetar o timeout para forçar o Dijkstra
+          // Você precisa adicionar um método público no ExperienceMap
+          em->resetGoalTimeout();  // Vamos criar este método
+          
+          double dx = em->get_experience(em->get_current_goal_id())->x_m - em->get_experience(em->get_current_id())->x_m;
+          double dy = em->get_experience(em->get_current_goal_id())->y_m - em->get_experience(em->get_current_id())->y_m;
+          double real_dist = sqrt(dx*dx + dy*dy);
+          
+          RCLCPP_INFO(this->get_logger(), "📏 Real distance to goal: %.3f m", real_dist);
+
           prev_goal_update = rclcpp::Time(odo->header.stamp);
           em->calculate_path_to_goal(rclcpp::Time(odo->header.stamp).seconds());
 
@@ -508,6 +533,19 @@ class ExperienceMapNode : public rclcpp::Node
                 // ============================================
                 if (em->get_current_goal_id() >= 0) {
                   RCLCPP_INFO(this->get_logger(), "🔄 Replanning path after loop closure");
+                  RCLCPP_INFO(this->get_logger(), "📊 Current exp: %d, Goal exp: %d", 
+                              em->get_current_id(), em->get_current_goal_id());
+                  RCLCPP_INFO(this->get_logger(), "📊 Total experiences: %d", em->get_num_experiences());
+                  
+                  // Reset distances
+                  for (int id = 0; id < em->get_num_experiences(); id++) {
+                      Experience* exp = em->get_experience(id);
+                      if (exp != nullptr) {
+                          exp->time_from_current_s = DBL_MAX;
+                          exp->goal_to_current = -1;
+                          exp->current_to_goal = -1;
+                      }
+                  }
                   em->calculate_path_to_goal(rclcpp::Time(action->header.stamp).seconds());
                   em->get_goal_waypoint();
                   
