@@ -202,7 +202,7 @@ private:
 
   void template_callback(const topological_msgs::msg::ViewTemplate::SharedPtr vt)
   {
-    RCLCPP_DEBUG(this->get_logger(), "PC:vt_callback id=%d rad=%f", 
+    RCLCPP_INFO(this->get_logger(), "PC:vt_callback id=%d rad=%f", 
                  vt->current_id, vt->relative_rad);
 
     pc->on_view_template(vt->current_id, vt->relative_rad);
