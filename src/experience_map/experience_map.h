@@ -380,6 +380,10 @@ public:
 
     }
 
+    double getRelativeRad() const { return relative_rad; }
+    
+    void setRelativeRad(double rad) { relative_rad = clip_rad_180(rad); }
+
 private:
   friend class boost::serialization::access;
 

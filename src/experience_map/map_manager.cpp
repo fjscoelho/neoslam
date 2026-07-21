@@ -97,6 +97,15 @@ Json::Value MapManager::serialize_to_json(const MapMetadata& metadata) {
         edges_array.append(edge);
     }
     root["edges"] = edges_array;
+    Json::Value state;
+        state["current_exp_id"] = em_->get_current_id();
+        const auto& goals = em_->get_goals();
+        for (int g : goals) {
+            state["goal_list"].append(g);
+        }
+        state["relative_rad"] = em_->getRelativeRad();  // precisa tornar acessível
+        root["state"] = state;
+
     
     return root;
 }
@@ -390,13 +399,15 @@ bool MapManager::load_from_json(const std::string& filename) {
     
     // Limpar o mapa atual
     if (em_ != nullptr) {
-        // TODO: Chamar o método clear() do ExperienceMap
-        std::cout << "WARNING: Clearing current map..." << std::endl;
-        // em_->clear(); // Descomente quando implementado
+        em_->clear();
+        std::cout << "  - Cleared current map" << std::endl;
     }
     
-    // Adicionar nós (Experiences)
-    for (const auto& node_json : root["nodes"]) {
+    // ============================================
+    // 1. Adicionar nós (Experiences)
+    // ============================================
+    const Json::Value& nodes = root["nodes"];
+    for (const auto& node_json : nodes) {
         int id = node_json["id"].asInt();
         int vt_id = has_vt_id ? node_json["vt_id"].asInt() : -1;
         double x = node_json["x_m"].asDouble();
@@ -405,15 +416,15 @@ bool MapManager::load_from_json(const std::string& filename) {
         unsigned int sec = node_json["seconds"].asUInt();
         unsigned int nsec = node_json["nanoseconds"].asUInt();
         
-        std::cout << "  Node " << id << " (vt_id=" << vt_id 
-                  << "): (" << x << ", " << y << ", " << th << ")" << std::endl;
-        
-        // TODO: Adicionar a experiência ao ExperienceMap
-        // em_->add_experience_from_import(id, vt_id, x, y, th, sec, nsec);
+        em_->add_experience_from_import(id, vt_id, x, y, th, sec, nsec);
     }
+    std::cout << "  - Added " << nodes.size() << " experiences" << std::endl;
     
-    // Adicionar links (Arestas)
-    for (const auto& edge_json : root["edges"]) {
+    // ============================================
+    // 2. Adicionar links (Arestas)
+    // ============================================
+    const Json::Value& edges = root["edges"];
+    for (const auto& edge_json : edges) {
         int id = edge_json["id"].asInt();
         int from = edge_json["exp_from_id"].asInt();
         int to = edge_json["exp_to_id"].asInt();
@@ -422,16 +433,36 @@ bool MapManager::load_from_json(const std::string& filename) {
         double facing = edge_json["facing_rad"].asDouble();
         double delta_time = edge_json["delta_time_s"].asDouble();
         
-        std::cout << "  Edge " << id << ": " << from << " -> " << to 
-                  << " (d=" << d << ")" << std::endl;
-        
-        // TODO: Adicionar o link ao ExperienceMap
-        // em_->add_link_from_import(id, from, to, d, heading, facing, delta_time);
+        em_->add_link_from_import(id, from, to, d, heading, facing, delta_time);
+    }
+    std::cout << "  - Added " << edges.size() << " links" << std::endl;
+    
+    // ============================================
+    // 3. Restaurar estado do mapa (current_exp_id, goals, etc.)
+    // ============================================
+    if (root.isMember("state")) {
+        const Json::Value& state = root["state"];
+        if (state.isMember("current_exp_id")) {
+            int current_id = state["current_exp_id"].asInt();
+            // Usar on_set_experience para atualizar o estado (respeitando o modo)
+            em_->on_set_experience(current_id, 0.0);
+        }
+        if (state.isMember("goal_list")) {
+            em_->clear_goal_list();
+            for (const auto& goal_id : state["goal_list"]) {
+                em_->add_goal(goal_id.asInt());
+            }
+        }
+        if (state.isMember("relative_rad")) {
+            // Ajuste adicional se necessário
+        }
+        std::cout << "  - Restored state: current_exp_id=" << em_->get_current_id()
+                  << ", goals=" << em_->get_goals().size() << std::endl;
     }
     
     std::cout << "Map imported successfully!" << std::endl;
-    std::cout << "  - Nodes: " << root["nodes"].size() << std::endl;
-    std::cout << "  - Links: " << root["edges"].size() << std::endl;
+    std::cout << "  - Nodes: " << em_->get_num_experiences() << std::endl;
+    std::cout << "  - Links: " << em_->get_num_links() << std::endl;
     
     return true;
 }
