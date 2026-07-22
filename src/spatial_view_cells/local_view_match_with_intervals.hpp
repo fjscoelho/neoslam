@@ -7,6 +7,7 @@
 #include <chrono>
 #include <iostream>
 #include <algorithm>
+#include <json/json.h>
 
 /**
  * @brief TemplateInterval groups temporally close and similar visual templates
@@ -228,13 +229,13 @@ public:
             if (prev_interval != n_interval) {
                 // New interval: create new template
                 template_id = create_template_id();
-                // std::cout << "  [Visual Template] Created NEW template (id=" 
-                //           << template_id << ", no_match)" << std::endl;
+                std::cout << "  [Visual Template] Created NEW template (id=" 
+                          << template_id << ", no_match)" << std::endl;
             } else {
                 // Mesmo intervalo: reutiliza template anterior
                 template_id = current_template_id;
-                // std::cout << "  [Visual Template] Reusing previous template (id=" 
-                //           << template_id << ", same_interval)" << std::endl;
+                std::cout << "  [Visual Template] Reusing previous template (id=" 
+                          << template_id << ", same_interval)" << std::endl;
             }
         } else {
             // ==========================================
@@ -251,11 +252,11 @@ public:
             
             template_id = interval_to_template_map[best_interval_idx];
             
-            // std::cout << "  [Visual Template] LOOP CLOSURE! Reusing template " 
-            //           << template_id 
-            //           << " (interval=" << best_interval_idx 
-            //           << ", similarity=" << scores_for_matching(best_interval_idx) 
-            //           << ")" << std::endl;
+            std::cout << "  [Visual Template] 🧭 LOOP CLOSURE! Reusing template " 
+                      << template_id 
+                      << " (interval=" << best_interval_idx 
+                      << ", similarity=" << scores_for_matching(best_interval_idx) 
+                      << ")" << std::endl;
         }
         
         // ==============================================================
@@ -293,6 +294,9 @@ public:
         }
         return scores;
     }
+
+    Json::Value serialize_to_json() const;
+    bool deserialize_from_json(const Json::Value& root);
 
 private:
     // ==============================================================
@@ -348,3 +352,123 @@ private:
         current_template_id = first_template_id;
     }
 };
+
+Json::Value LocalViewMatchWithIntervals::serialize_to_json() const {
+    Json::Value root;
+    
+    // Parâmetros
+    root["theta_alpha"] = theta_alpha;
+    root["theta_rho"] = theta_rho;
+    root["score_interval"] = score_interval;
+    root["exclude_recent_intervals"] = exclude_recent_intervals;
+    
+    // Visual template IDs
+    Json::Value vt_ids(Json::arrayValue);
+    for (int id : visual_template_ids) {
+        vt_ids.append(id);
+    }
+    root["visual_template_ids"] = vt_ids;
+    
+    // Intervalos
+    Json::Value intervals(Json::arrayValue);
+    for (const auto& interval_ptr : interval_list) {
+        Json::Value int_json;
+        int_json["start"] = interval_ptr->init_end.first;
+        int_json["end"] = interval_ptr->init_end.second;
+        // Serializar Roaring bitmap (como array de uint32)
+        const size_t cardinality = interval_ptr->accumulated_features.cardinality();
+        std::vector<uint32_t> words(cardinality);
+        interval_ptr->accumulated_features.toUint32Array(words.data());
+        Json::Value words_json(Json::arrayValue);
+        for (uint32_t w : words) {
+            words_json.append(w);
+        }
+        int_json["features"] = words_json;
+        intervals.append(int_json);
+    }
+    root["intervals"] = intervals;
+    
+    // Mapeamento intervalo -> template
+    Json::Value map(Json::arrayValue);
+    for (int id : interval_to_template_map) {
+        map.append(id);
+    }
+    root["interval_to_template_map"] = map;
+    
+    // Estado
+    root["is_initialized"] = is_initialized_;
+    root["n_interval"] = n_interval;
+    root["prev_interval"] = prev_interval;
+    root["current_template_id"] = current_template_id;
+    root["next_template_id"] = next_template_id;
+    
+    return root;
+}
+
+bool LocalViewMatchWithIntervals::deserialize_from_json(const Json::Value& root) {
+    // Verificar parâmetros (opcional, mas bom para consistência)
+    if (root["theta_alpha"].asInt() != theta_alpha ||
+        root["theta_rho"].asInt() != theta_rho ||
+        root["score_interval"].asInt() != score_interval ||
+        root["exclude_recent_intervals"].asInt() != exclude_recent_intervals) {
+        std::cerr << "[SpatialViewCells] Parameter mismatch in saved state!" << std::endl;
+        return false;
+    }
+    
+    // Restaurar visual template IDs
+    visual_template_ids.clear();
+    for (const auto& id_json : root["visual_template_ids"]) {
+        visual_template_ids.push_back(id_json.asInt());
+    }
+    
+    // Restaurar intervalos
+    interval_list.clear();
+    const auto& intervals_json = root["intervals"];
+    for (const auto& int_json : intervals_json) {
+        auto interval = std::make_shared<TemplateInterval>();
+        interval->init_end.first = int_json["start"].asInt();
+        interval->init_end.second = int_json["end"].asInt();
+        // Restaurar Roaring bitmap
+        const auto& words_json = int_json["features"];
+        std::vector<uint32_t> words;
+        for (const auto& w : words_json) {
+            words.push_back(w.asUInt());
+        }
+        interval->accumulated_features = Roaring(words.size(), words.data());
+        interval_list.push_back(interval);
+    }
+
+    // Reconstruir intervals_feature_map a partir dos intervalos carregados
+    intervals_feature_map.clear();
+    for (const auto& interval_ptr : interval_list) {
+        intervals_feature_map.push_back(interval_ptr->accumulated_features);
+    }
+
+    // Restaurar current_interval apontando para o intervalo atual (índice n_interval)
+    if (!interval_list.empty() && n_interval >= 0 && n_interval < (int)interval_list.size()) {
+        current_interval = interval_list[n_interval];
+    } else {
+        current_interval.reset();
+        RCLCPP_WARN(rclcpp::get_logger("SpatialViewCells"), 
+                    "n_interval (%d) fora dos limites dos intervalos carregados", n_interval);
+    }
+    
+    // Restaurar mapeamento intervalo -> template
+    interval_to_template_map.clear();
+    for (const auto& id_json : root["interval_to_template_map"]) {
+        interval_to_template_map.push_back(id_json.asInt());
+    }
+    
+    // Restaurar estado
+    is_initialized_ = root["is_initialized"].asBool();
+    n_interval = root["n_interval"].asInt();
+    prev_interval = root["prev_interval"].asInt();
+    current_template_id = root["current_template_id"].asInt();
+    next_template_id = root["next_template_id"].asInt();
+    
+    std::cout << "[SpatialViewCells] Deserialized: " 
+              << interval_list.size() << " intervals, "
+              << visual_template_ids.size() << " template IDs" << std::endl;
+    
+    return true;
+}

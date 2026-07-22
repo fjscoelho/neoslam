@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <rclcpp/rclcpp.hpp>
+#include <json/json.h>
 
 typedef double Posecell;
 
@@ -141,8 +142,13 @@ public:
           for (i = 0; i < PC_DIM_XY; i++)
             ar & posecells[k][j][i];
     }
+  
+    Json::Value serialize_to_json() const;
+
+    bool deserialize_from_json(const Json::Value& root);
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()
+  
 private:
   friend class boost::serialization::access;
 

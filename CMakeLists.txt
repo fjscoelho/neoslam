@@ -119,13 +119,16 @@ add_executable(spatial_view_cells_node
 target_include_directories(spatial_view_cells_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/spatial_view_cells
   ${EIGEN3_INCLUDE_DIRS}
+  ${JSONCPP_INCLUDE_DIRS}
 )
 target_link_libraries(spatial_view_cells_node 
   roaring::roaring
+  ${JSONCPP_LIBRARIES}
 )
 ament_target_dependencies(spatial_view_cells_node
   rclcpp
   std_msgs
+  std_srvs
   topological_msgs
 )
 
@@ -136,15 +139,19 @@ add_executable(pose_cells_node
 
 target_include_directories(pose_cells_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pose_cells
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
+  ${JSONCPP_INCLUDE_DIRS}
 )
 target_link_libraries(pose_cells_node
   ${IRRLICHT_LIBRARIES}
   ${OPENGL_LIBRARIES}
+  ${JSONCPP_LIBRARIES}
 )
 ament_target_dependencies(pose_cells_node
   rclcpp
   nav_msgs
+  std_srvs
   topological_msgs
 )
 
@@ -159,7 +166,10 @@ add_executable(experience_map_node
 
 target_include_directories(experience_map_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/experience_map
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pose_cells
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/spatial_view_cells
   ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp  # <-- ADICIONAR ESTA LINHA!
   ${JSONCPP_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
@@ -172,6 +182,7 @@ target_link_libraries(experience_map_node
   ${JSONCPP_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
   ${PROJECT_NAME}__rosidl_typesupport_cpp
+  roaring::roaring
 )
 
 ament_target_dependencies(experience_map_node

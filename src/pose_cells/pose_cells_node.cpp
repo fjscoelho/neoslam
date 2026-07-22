@@ -5,6 +5,9 @@ using namespace std;
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_srvs/srv/empty.hpp>
+#include <fstream>
+#include <json/json.h>
 
 #include "posecell_network.h"
 #include "mode_manager/mode_globals.h"  // <-- NOVO INCLUDE
@@ -117,7 +120,7 @@ public:
       topic_root + "/LocalView/Template", 10,
       std::bind(&PoseCellNode::template_callback, this, std::placeholders::_1));
 
-    // ADICIONA O SUBSCRIBER DO MODO
+    // Add mode subscriber to listen for changes in the system mode (mapping/navigation)
     mode_subscriber_ = create_subscription<std_msgs::msg::String>(
       "/system_mode", 10,
       [this](const std_msgs::msg::String::SharedPtr msg) {
@@ -138,6 +141,37 @@ public:
     }
     
     RCLCPP_INFO(this->get_logger(), "📝 PoseCell initial mode: %s", initial_mode.c_str());
+
+    // services for exporting and importing PoseCell state
+    export_pc_service_ = this->create_service<std_srvs::srv::Empty>(
+    "/pose_cells/export_state",
+    [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+           std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+        (void)req; (void)res;
+        Json::Value state = pc->serialize_to_json();
+        std::ofstream file("pose_cells_state.json");
+        file << state.toStyledString();
+        RCLCPP_INFO(this->get_logger(), "PoseCell state exported to pose_cells_state.json");
+    });
+
+    import_pc_service_ = this->create_service<std_srvs::srv::Empty>(
+        "/pose_cells/import_state",
+        [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+              std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+            (void)req; (void)res;
+            Json::Value root;
+            std::ifstream file("pose_cells_state.json");
+            if (!file.is_open()) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to open pose_cells_state.json");
+                return;
+            }
+            file >> root;
+            if (pc->deserialize_from_json(root)) {
+                RCLCPP_INFO(this->get_logger(), "PoseCell state imported successfully");
+            } else {
+                RCLCPP_ERROR(this->get_logger(), "Failed to import PoseCell state");
+            }
+        });
     
       #ifdef HAVE_IRRLICHT
           use_graphics = this->get_parameter("enable").as_bool();
@@ -235,6 +269,8 @@ private:
   topological_msgs::msg::TopologicalAction pc_output;
   std::string current_mode_ = "mapping";
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr mode_subscriber_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_pc_service_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr import_pc_service_;  
 
 #ifdef HAVE_IRRLICHT
   PosecellScene *pcs = nullptr;

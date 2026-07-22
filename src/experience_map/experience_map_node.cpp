@@ -17,6 +17,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>  // <-- New!
 #include <std_msgs/msg/string.hpp>  // <-- New!
 #include "mode_manager/mode_globals.h"  // <-- New
+#include "state_manager.hpp" // <-- New
 
 
 // ============================================
@@ -919,6 +920,7 @@ class ExperienceMapNode : public rclcpp::Node
 
     // Map Manager
     std::shared_ptr<neoslam::MapManager> map_manager_;
+    std::shared_ptr<StateManager> state_manager_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_json_service_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_yaml_service_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_binary_service_;

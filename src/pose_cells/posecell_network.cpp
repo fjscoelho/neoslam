@@ -1013,15 +1013,28 @@ void PosecellNetwork::create_view_template()
   PosecellVisualTemplate * pcvt;
   visual_templates.resize(visual_templates.size() + 1);
   pcvt = &visual_templates[visual_templates.size() - 1];
+  pcvt->id = visual_templates.size() - 1;
   pcvt->pc_x = x();
   pcvt->pc_y = y();
   pcvt->pc_th = th();
   pcvt->decay = VT_ACTIVE_DECAY;
 
+  // LOG: criação de novo template
+  RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+              "📝 Created new visual template ID=%zu, pc=(%.2f,%.2f,%.2f), decay=%.2f",
+              visual_templates.size() - 1, pcvt->pc_x, pcvt->pc_y, pcvt->pc_th, pcvt->decay);
+
 }
 
 void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
-{
+{ 
+  // LOG: recebimento do template
+  RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+              "📥 on_view_template: vt=%u, rad=%.4f, mode=%s, total_templates=%zu",
+              vt, vt_rad,
+              ModeGlobals::getInstance().isNavigationMode() ? "NAVIGATION" : "MAPPING",
+              visual_templates.size());
+
   PosecellVisualTemplate * pcvt;
 
    // Em modo navigation, processa de forma diferente
@@ -1053,25 +1066,63 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
     {
       if (vt != current_vt)
       {
+        // template diferente do atual, não incrementa decay
+        RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"),
+                     "vt=%u != current_vt=%u, decay unchanged", vt, current_vt);
       } else {
         pcvt->decay += VT_ACTIVE_DECAY;
+        RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"),
+                     "vt==current_vt, decay incremented to %.3f", pcvt->decay);
       }
 
       // this line is magic. ask michael about it
       double energy = PC_VT_INJECT_ENERGY * 1.0 / 30.0 * (30.0 - exp(1.2 * pcvt->decay));
+      RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"),
+                  "🔋 vt=%u, decay=%.3f, energy=%.6f (threshold=%.6f)",
+                  vt, pcvt->decay, energy, PC_VT_INJECT_ENERGY);
+
       if (energy > 0)
       {
-		vt_delta_pc_th = vt_rad / (2.0*M_PI) * PC_DIM_TH;
-		double pc_th_corrected = pcvt->pc_th + vt_rad / (2.0*M_PI) * PC_DIM_TH;
-		if (pc_th_corrected < 0) 
-			pc_th_corrected = PC_DIM_TH + pc_th_corrected;
-		if (pc_th_corrected >= PC_DIM_TH)
-			pc_th_corrected = pc_th_corrected - PC_DIM_TH;
-        inject((int)pcvt->pc_x, (int)pcvt->pc_y, (int)pc_th_corrected, energy);
+        vt_delta_pc_th = vt_rad / (2.0*M_PI) * PC_DIM_TH;
+        double pc_th_corrected = pcvt->pc_th + vt_rad / (2.0*M_PI) * PC_DIM_TH;
+        // Ajuste de wrap
+        if (pc_th_corrected < 0) 
+          pc_th_corrected = PC_DIM_TH + pc_th_corrected;
+        if (pc_th_corrected >= PC_DIM_TH)
+          pc_th_corrected = pc_th_corrected - PC_DIM_TH;
+
+        int inj_x = (int)pcvt->pc_x;
+        int inj_y = (int)pcvt->pc_y;
+        int inj_th = (int)pc_th_corrected;
+
+        // Verifica limites antes de injetar
+        if (inj_x >= 0 && inj_x < PC_DIM_XY &&
+            inj_y >= 0 && inj_y < PC_DIM_XY &&
+            inj_th >= 0 && inj_th < PC_DIM_TH) {
+          inject(inj_x, inj_y, inj_th, energy);
+          RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"),
+                      "✅ Injected energy=%.6f at (%d,%d,%d) | current best=(%.2f,%.2f,%.2f)",
+                      energy, inj_x, inj_y, inj_th, best_x, best_y, best_th);
+        } else {
+          RCLCPP_WARN(rclcpp::get_logger("PosecellNetwork"),
+                      "❌ Injection coordinates out of bounds: (%d,%d,%d) | dims=(%d,%d,%d)",
+                      inj_x, inj_y, inj_th, PC_DIM_XY, PC_DIM_XY, PC_DIM_TH);
+        }
       }
+      else
+      {
+        RCLCPP_WARN(rclcpp::get_logger("PosecellNetwork"),
+                    "⚠️ Energy <= 0 (decay=%.3f), skipping injection", pcvt->decay);
+      }
+    }
+    else
+    {
+      RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"),
+                   "vt=%u is too recent (newer than last 10), skipping injection", vt);
     }
   }
 
+  // Atualização do decay de todos os templates
   for (unsigned int i=0; i < visual_templates.size(); i++)
   {
     visual_templates[i].decay -= PC_VT_RESTORE;
@@ -1082,7 +1133,198 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
   prev_vt = current_vt;
   current_vt = vt;
 
-vt_update = true;
+  vt_update = true;
+}
+
+Json::Value PosecellNetwork::serialize_to_json() const {
+    Json::Value root;
+    
+    // Important parameters for validation and reconstruction
+    root["params"]["PC_DIM_XY"] = PC_DIM_XY;
+    root["params"]["PC_DIM_TH"] = PC_DIM_TH;
+    root["params"]["PC_CELL_X_SIZE"] = PC_CELL_X_SIZE;
+    root["params"]["EXP_DELTA_PC_THRESHOLD"] = EXP_DELTA_PC_THRESHOLD;
+    
+    // Pose cells (energy values)
+    Json::Value cells(Json::arrayValue);
+    for (int i = 0; i < posecells_elements; ++i) {
+        cells.append(posecells_memory[i]);
+    }
+    root["posecells"] = cells;
+    
+    // Best pose
+    root["best_x"] = best_x;
+    root["best_y"] = best_y;
+    root["best_th"] = best_th;
+    
+    // Visual templates
+    Json::Value vt_array(Json::arrayValue);
+    for (const auto& vt : visual_templates) {
+        Json::Value vt_json;
+        vt_json["id"] = vt.id;
+        vt_json["pc_x"] = vt.pc_x;
+        vt_json["pc_y"] = vt.pc_y;
+        vt_json["pc_th"] = vt.pc_th;
+        vt_json["decay"] = vt.decay;
+        // Serializar exps
+        Json::Value exps_array(Json::arrayValue);
+        for (unsigned int exp_id : vt.exps) {
+            exps_array.append(exp_id);
+        }
+        vt_json["exps"] = exps_array;
+        vt_array.append(vt_json);
+            }
+    root["visual_templates"] = vt_array;
+    
+    // Internal experiences of the pose cell network
+    Json::Value exp_array(Json::arrayValue);
+    for (const auto& exp : experiences) {
+        Json::Value exp_json;
+        exp_json["x_pc"] = exp.x_pc;
+        exp_json["y_pc"] = exp.y_pc;
+        exp_json["th_pc"] = exp.th_pc;
+        exp_json["vt_id"] = exp.vt_id;
+        exp_array.append(exp_json);
+    }
+    root["posecell_experiences"] = exp_array;
+    
+    // State of the pose cell network
+    root["current_vt"] = current_vt;
+    root["prev_vt"] = prev_vt;
+    root["current_exp"] = current_exp;
+    root["prev_exp"] = prev_exp;
+    root["vt_delta_pc_th"] = vt_delta_pc_th;
+    
+    return root;
+}
+
+bool PosecellNetwork::deserialize_from_json(const Json::Value& root) {
+    // Verify parameters for consistency
+    if (!root.isMember("posecells") || !root.isMember("best_x")) {
+        std::cerr << "[PosecellNetwork] Invalid JSON: missing required fields" << std::endl;
+        return false;
+    }
+    
+    // Restore pose cells
+    const auto& cells = root["posecells"];
+    if (cells.size() != posecells_elements) {
+        std::cerr << "[PosecellNetwork] Posecell count mismatch! Expected " 
+                  << posecells_elements << ", got " << cells.size() << std::endl;
+        return false;
+    }
+    for (int i = 0; i < posecells_elements; ++i) {
+        posecells_memory[i] = cells[i].asDouble();
+    }
+    
+    // Restore best pose
+    best_x = root["best_x"].asDouble();
+    best_y = root["best_y"].asDouble();
+    best_th = root["best_th"].asDouble();
+    
+    // Restore Posecell visual templates
+    visual_templates.clear();
+    const auto& vt_array = root["visual_templates"];
+    for (const auto& vt_json : vt_array) {
+        PosecellVisualTemplate vt;
+        vt.id = vt_json["id"].asInt();
+        vt.pc_x = vt_json["pc_x"].asDouble();
+        vt.pc_y = vt_json["pc_y"].asDouble();
+        vt.pc_th = vt_json["pc_th"].asDouble();
+        vt.decay = vt_json["decay"].asDouble();
+        Json::Value exps_array = vt_json["exps"];
+        for (const auto& exp_id_json : exps_array) {
+            vt.exps.push_back(exp_id_json.asUInt());
+        }
+        visual_templates.push_back(vt);
+    }
+    
+    // Restore Posecell experiences
+    experiences.clear();
+    const auto& exp_array = root["posecell_experiences"];
+    for (const auto& exp_json : exp_array) {
+        PosecellExperience exp;
+        exp.x_pc = exp_json["x_pc"].asDouble();
+        exp.y_pc = exp_json["y_pc"].asDouble();
+        exp.th_pc = exp_json["th_pc"].asDouble();
+        exp.vt_id = exp_json["vt_id"].asInt();
+        experiences.push_back(exp);
+    }
+
+    // Após restaurar visual_templates e experiences
+    for (auto& vt : visual_templates) {
+    // Garantir que as coordenadas estejam dentro dos limites
+    vt.pc_x = fmod(vt.pc_x + PC_DIM_XY, PC_DIM_XY);
+    vt.pc_y = fmod(vt.pc_y + PC_DIM_XY, PC_DIM_XY);
+    vt.pc_th = fmod(vt.pc_th + PC_DIM_TH, PC_DIM_TH);
+    
+    // Resetar decay para permitir injeção
+    vt.decay = VT_ACTIVE_DECAY;
+
+      // Log para depuração
+    RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+                "Template %d: pc=(%.2f,%.2f,%.2f), decay=%.2f",
+                vt.id, vt.pc_x, vt.pc_y, vt.pc_th, vt.decay);
+
+    }
+
+    // Após restaurar visual_templates e experiences:
+    for (size_t i = 0; i < experiences.size(); ++i) {
+        int vt_id = experiences[i].vt_id;
+        for (auto& vt : visual_templates) {
+            if (vt.id == vt_id) {
+                vt.exps.push_back(i);
+                break;
+            }
+        }
+    }
+
+    // Ajustar current_exp se necessário
+    if (!experiences.empty()) {
+        // Encontrar a experiência mais próxima da pose atual (best_x, best_y, best_th)
+        double min_dist = DBL_MAX;
+        unsigned int best_exp = 0;
+        for (size_t i = 0; i < experiences.size(); ++i) {
+            double dx = experiences[i].x_pc - best_x;
+            double dy = experiences[i].y_pc - best_y;
+            double dth = experiences[i].th_pc - best_th;
+            double dist = sqrt(dx*dx + dy*dy + dth*dth);
+            if (dist < min_dist) {
+                min_dist = dist;
+                best_exp = i;
+            }
+        }
+        current_exp = best_exp;
+        RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+                    "Adjusted current_exp to %d (distance %.3f)", best_exp, min_dist);
+    }
+    
+    // Restore state
+    current_vt = root["current_vt"].asUInt();
+    prev_vt = root["prev_vt"].asUInt();
+    current_exp = root["current_exp"].asUInt();
+    prev_exp = root["prev_exp"].asUInt();
+    vt_delta_pc_th = root["vt_delta_pc_th"].asDouble();
+    
+    // Reconstruir associações entre visual templates e experiences (exps)
+    // Isso é importante para o funcionamento correto do get_action()
+    // Percorre todas as experiences do PoseCellNetwork e adiciona ao template correspondente
+    for (size_t i = 0; i < experiences.size(); ++i) {
+        int vt_id = experiences[i].vt_id;
+        // Encontrar o template com esse vt_id
+        for (auto& vt : visual_templates) {
+            if (vt.id == vt_id) {
+                vt.exps.push_back(i);
+                break;
+            }
+        }
+    }
+
+    
+    std::cout << "[PosecellNetwork] Deserialized: " 
+              << visual_templates.size() << " visual templates, "
+              << experiences.size() << " internal experiences" << std::endl;
+    
+    return true;
 }
 
 

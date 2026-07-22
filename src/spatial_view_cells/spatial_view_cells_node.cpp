@@ -1,5 +1,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/u_int32_multi_array.hpp>
+#include <std_srvs/srv/empty.hpp>
+#include <fstream>
+#include <json/json.h>
 #include <topological_msgs/msg/sdr_stamped.hpp>
 #include <topological_msgs/msg/view_template.hpp>
 #include <roaring/roaring.hh>
@@ -72,6 +75,40 @@ public:
                 this->sdr_callback(msg);
             });
         
+
+        // No construtor:
+        export_sv_service_ = this->create_service<std_srvs::srv::Empty>(
+            "/spatial_view/export_state",
+            [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+                   std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+                (void)req;
+                (void)res;
+                Json::Value state = lv_->serialize_to_json();
+                std::ofstream file("spatial_view_state.json");
+                file << state.toStyledString();
+                RCLCPP_INFO(this->get_logger(), "SpatialView state exported");
+            });
+
+        import_sv_service_ = this->create_service<std_srvs::srv::Empty>(
+            "/spatial_view/import_state",
+            [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+                   std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+                (void)req;
+                (void)res;
+                Json::Value root;
+                std::ifstream file("spatial_view_state.json");
+                if (!file.is_open()) {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to open spatial_view_state.json");
+                    return;
+                }
+                file >> root;
+                if (lv_->deserialize_from_json(root)) {
+                    RCLCPP_INFO(this->get_logger(), "SpatialView state imported");
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to import SpatialView state");
+                }
+            });
+
         RCLCPP_INFO(this->get_logger(), "SpatialViewCellsNode initialized successfully!");
     }
 
@@ -122,6 +159,10 @@ private:
     // ROS2 publishers and subscribers
     rclcpp::Publisher<topological_msgs::msg::ViewTemplate>::SharedPtr pub_vt_;
     rclcpp::Subscription<topological_msgs::msg::SdrStamped>::SharedPtr sub_sdr_;
+
+    // Services for exporting and importing state
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_sv_service_;
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr import_sv_service_;
 };
 
 int main(int argc, char** argv) {
