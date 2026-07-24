@@ -324,12 +324,28 @@ class ExperienceMapNode : public rclcpp::Node
         std::shared_ptr<neoslam::srv::ImportMap::Response> response)
     {
         if (map_manager_) {
-            bool success = map_manager_->import_map(request->filename);
-            response->success = success;
-            response->message = success ? "Map imported successfully" : "Failed to import map";
+          bool success = map_manager_->import_map(request->filename);
+          response->success = success;
+          response->message = success ? "Map imported successfully" : "Failed to import map";
+
+          if (success) {
+            // ============================================
+            // Publishe the map after import
+            // ============================================
+            RCLCPP_INFO(this->get_logger(), "📡 Publishing map after import...");
+            publishMap(true);  // Publish the complete map
+
+            // If in NAVIGATION mode, adjust the odometry pose
+            if (ModeGlobals::getInstance().isNavigationMode()) {
+                auto [x, y, th] = em->getCurrentPose();
+                em->resetOdomPose(x, y, th);
+                RCLCPP_INFO(this->get_logger(), "📌 Odom pose set to: x=%.3f y=%.3f th=%.3f", 
+                            x, y, th);
+            }
+          }
         } else {
-            response->success = false;
-            response->message = "Map manager not initialized";
+          response->success = false;
+          response->message = "Map manager not initialized";
         }
     }
 
@@ -376,6 +392,144 @@ class ExperienceMapNode : public rclcpp::Node
       // Replaneja o caminho imediatamente
       em->calculate_path_to_goal(rclcpp::Clock().now().seconds());
       em->get_goal_waypoint();
+    }
+
+    void publishMap(bool force = false) {
+        // Publicar o mapa no formato TopologicalMap
+        topological_msgs::msg::TopologicalMap em_map;
+        em_map.header.stamp = this->now();
+        em_map.header.frame_id = "map";
+        em_map.node_count = em->get_num_experiences();
+        em_map.node.resize(em->get_num_experiences());
+        
+        for (int i = 0; i < em->get_num_experiences(); i++) {
+            em_map.node[i].id = em->get_experience(i)->id;
+            em_map.node[i].pose.pose.position.x = em->get_experience(i)->x_m;
+            em_map.node[i].pose.pose.position.y = em->get_experience(i)->y_m;
+            em_map.node[i].pose.header.stamp.sec = em->get_experience(i)->seconds;
+            em_map.node[i].pose.header.stamp.nanosec = em->get_experience(i)->nanoseconds;
+            em_map.node[i].pose.header.frame_id = "map";
+            tf2::Quaternion q;
+            q.setRPY(0, 0, em->get_experience(i)->th_rad);
+            em_map.node[i].pose.pose.orientation = tf2::toMsg(q);
+        }
+
+        em_map.edge_count = em->get_num_links();
+        em_map.edge.resize(em->get_num_links());
+        
+        for (int i = 0; i < em->get_num_links(); i++) {
+            em_map.edge[i].id = i;
+            em_map.edge[i].source_id = em->get_link(i)->exp_from_id;
+            em_map.edge[i].destination_id = em->get_link(i)->exp_to_id;
+            em_map.edge[i].duration = rclcpp::Duration::from_seconds(em->get_link(i)->delta_time_s);
+            em_map.edge[i].transform.translation.x = em->get_link(i)->d * cos(em->get_link(i)->heading_rad);
+            em_map.edge[i].transform.translation.y = em->get_link(i)->d * sin(em->get_link(i)->heading_rad);
+            
+            tf2::Quaternion q;
+            q.setRPY(0, 0, em->get_link(i)->facing_rad);
+            em_map.edge[i].transform.rotation = tf2::toMsg(q);
+        }
+        
+        pub_em->publish(em_map);
+        
+        // Publicar marcadores RViz
+        publishRVizMarkers();
+        
+        RCLCPP_INFO(this->get_logger(), "📡 Map published: %d nodes, %d edges", 
+                    em->get_num_experiences(), em->get_num_links());
+    }
+
+    void publishRVizMarkers() {
+        visualization_msgs::msg::MarkerArray rviz_marker_array;
+        
+        // 1. Nós como esferas verdes
+        visualization_msgs::msg::Marker nodes_marker;
+        nodes_marker.header.frame_id = "map";
+        nodes_marker.header.stamp = this->now();
+        nodes_marker.ns = "nodes";
+        nodes_marker.id = 0;
+        nodes_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+        nodes_marker.action = visualization_msgs::msg::Marker::ADD;
+        nodes_marker.scale.x = 0.05;
+        nodes_marker.scale.y = 0.05;
+        nodes_marker.scale.z = 0.05;
+        nodes_marker.color.r = 0.0;
+        nodes_marker.color.g = 1.0;
+        nodes_marker.color.b = 0.0;
+        nodes_marker.color.a = 1.0;
+        
+        for (int i = 0; i < em->get_num_experiences(); i++) {
+            Experience* exp = em->get_experience(i);
+            if (exp == nullptr) continue;
+            
+            geometry_msgs::msg::Point p;
+            p.x = exp->x_m;
+            p.y = exp->y_m;
+            p.z = 0.0;
+            nodes_marker.points.push_back(p);
+        }
+        rviz_marker_array.markers.push_back(nodes_marker);
+        
+        // 2. Arestas como linhas brancas
+        visualization_msgs::msg::Marker edges_marker;
+        edges_marker.header.frame_id = "map";
+        edges_marker.header.stamp = this->now();
+        edges_marker.ns = "edges";
+        edges_marker.id = 1;
+        edges_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+        edges_marker.action = visualization_msgs::msg::Marker::ADD;
+        edges_marker.scale.x = 0.01;
+        edges_marker.color.r = 1.0;
+        edges_marker.color.g = 1.0;
+        edges_marker.color.b = 1.0;
+        edges_marker.color.a = 1.0;
+        
+        for (int i = 0; i < em->get_num_links(); i++) {
+            Link* link = em->get_link(i);
+            if (link == nullptr) continue;
+            
+            Experience* from = em->get_experience(link->exp_from_id);
+            Experience* to = em->get_experience(link->exp_to_id);
+            if (from == nullptr || to == nullptr) continue;
+            
+            geometry_msgs::msg::Point p1, p2;
+            p1.x = from->x_m;
+            p1.y = from->y_m;
+            p1.z = 0.0;
+            p2.x = to->x_m;
+            p2.y = to->y_m;
+            p2.z = 0.0;
+            
+            edges_marker.points.push_back(p1);
+            edges_marker.points.push_back(p2);
+        }
+        rviz_marker_array.markers.push_back(edges_marker);
+        
+        // 3. Nó atual destacado em vermelho
+        visualization_msgs::msg::Marker current_marker;
+        current_marker.header.frame_id = "map";
+        current_marker.header.stamp = this->now();
+        current_marker.ns = "current";
+        current_marker.id = 2;
+        current_marker.type = visualization_msgs::msg::Marker::SPHERE;
+        current_marker.action = visualization_msgs::msg::Marker::ADD;
+        current_marker.scale.x = 0.15;
+        current_marker.scale.y = 0.15;
+        current_marker.scale.z = 0.15;
+        current_marker.color.r = 1.0;
+        current_marker.color.g = 0.0;
+        current_marker.color.b = 0.0;
+        current_marker.color.a = 1.0;
+        
+        Experience* current = em->get_experience(em->get_current_id());
+        if (current != nullptr) {
+            current_marker.pose.position.x = current->x_m;
+            current_marker.pose.position.y = current->y_m;
+            current_marker.pose.position.z = 0.0;
+            rviz_marker_array.markers.push_back(current_marker);
+        }
+        
+        pub_rviz_markers_->publish(rviz_marker_array);
     }
 
   private:

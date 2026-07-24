@@ -142,6 +142,11 @@ public:
     
     RCLCPP_INFO(this->get_logger(), "📝 PoseCell initial mode: %s", initial_mode.c_str());
 
+    // Callback for dynamic parameter updates
+    this->add_on_set_parameters_callback(
+        std::bind(&PoseCellNode::parametersCallback, this, std::placeholders::_1)
+    );
+
     // services for exporting and importing PoseCell state
     export_pc_service_ = this->create_service<std_srvs::srv::Empty>(
     "/pose_cells/export_state",
@@ -259,6 +264,26 @@ private:
       RCLCPP_INFO(get_logger(), "🧭 PoseCell: NAVIGATION mode activated");
       // Desabilita criação de experiências
     }
+  }
+
+  rcl_interfaces::msg::SetParametersResult parametersCallback(
+    const std::vector<rclcpp::Parameter>& parameters)
+  {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = true;
+      
+      for (const auto& param : parameters) {
+          if (param.get_name() == "pc_vt_inject_energy") {
+              double new_value = param.as_double();
+              if (pc) {
+                  pc->set_vt_inject_energy(new_value);
+                  RCLCPP_INFO(this->get_logger(), 
+                              "✅ pc_vt_inject_energy updated to: %.6f", new_value);
+              }
+          }
+      }
+      
+      return result;
   }
 
   PosecellNetwork* pc = nullptr;

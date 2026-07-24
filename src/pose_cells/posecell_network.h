@@ -90,6 +90,15 @@ public:
 
   unsigned int get_current_vt_id() const { return current_vt; }
 
+  bool set_vt_inject_energy(double new_value) {
+      PC_VT_INJECT_ENERGY = new_value;
+      RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+                  "✅ pc_vt_inject_energy changed to: %.6f", PC_VT_INJECT_ENERGY);
+      return true;
+  }
+
+  double get_vt_inject_energy() const { return PC_VT_INJECT_ENERGY; }
+
   template<typename Archive>
     void save(Archive& ar, const unsigned int version) const
     {
