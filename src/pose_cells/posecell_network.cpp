@@ -926,6 +926,8 @@ PosecellNetwork::PosecellAction PosecellNetwork::get_action()
     experience = &experiences[current_exp];
 
     delta_pc = get_delta_pc(experience->x_pc, experience->y_pc, experience->th_pc);
+    // Acho em modo navigation, preciso calcular o delta_pc em função da pose atual, já que a última experiência pode não ser a mais próxima da pose atual.
+    // Vou verificar
 
     PosecellVisualTemplate * pcvt = &visual_templates[current_vt];
     if (pcvt->exps.size() == 0)
