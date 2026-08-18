@@ -212,15 +212,117 @@ neoslam provides launch files for different datasets:
 # For Robotarium dataset
 ros2 launch neoslam robotarium.launch.py use_sim_time:=true
 ```
+### Rviz Visualization
+
+It's optional, but highly recommended for a better data visualization:
+
+The RViz display includes:
+
+- Topological Map: Nodes (experiences) and edges as a graph
+
+- Robot Pose: Current position and orientation
+
+- Goal Pose: Navigation target
+
+- Planned Path: Sequence of nodes to traverse
+
+**Robotarium Example:**  In a separate terminal (with the virtual environment activated), play your ROS 2 bag file:
+
+```bash
+# For Robotarium dataset
+cd ~/ros2_jazzy_ws/src/neoslam/rviz/
+rviz2 -d robotarium.rviz
+```
+![Rviz_mapping](<robotarium _mapping.png>)
 
 ### Playing Dataset Bags
 
 In a separate terminal (with the virtual environment activated), play your ROS 2 bag file:
 
 ```bash
-# For iratAUS dataset
+# For Robotarium dataset
 ros2 bag play _2022-04-07-14-14-35_robotarium/_2022-04-07-14-14-35_robotarium_ros2.db3 --rate 1.0 --clock --start-paused --remap /stereo_camera/left/image_raw:=/robotarium/camera/image /odometry/filtered:=/robotarium/odom
 
 # Adjust rate as needed (1.0 = real-time, 2.0 = 2x speed, etc.)
 ```
 Obs.: Remappings are necessary to align the image and odometry descriptions with the names expected by NeOSLAM. The expected topic names are `/topic_root/camera/image` and `/topic/odom`, where `topic_root` is passed as a parameter in the `.config` configuration file.
+
+<!-- ### Acknowledgments
+This project builds upon previous work in bio-inspired robotics and neuromorphic computing. Special thanks to the contributors of the HTM algorithms and the ROS community. -->
+
+
+## Advanced Features - New NeoSLAM workflow: 
+
+A persistent NeoSLAM workflow that connects mapping, state export/import, frozen-map localization, and topological global planning in ROS 2.
+![New_WorkFlow](NeoSLAM_Nav_mode.png)
+
+1. In **Mapping Node**, as the robot explores a new environment, the system adds new
+experiences. When the robot passes through a previously visited location, a loop closure occurs, and the entire map is updated
+to correct odometric drift.; 
+2. Once mapping is complete, the user can export both the map and the complete system state;
+3. The data are stored as human-readable JSON files; 
+4. **Navigation Mode** – After the environment has been mapped, the user can launch a new application, switch to navigation mode, and import the saved files; 
+5. In the Localization task, the robot localizes itself within the experience map but no longer modifies it; 
+6. The operator can specify a goal location, and 
+7. the Path Planner algorithm computes the optimal route to that goal within the experience map.
+
+### Export and Import Map Data
+
+neoslam allows you to export the entire state of the SLAM system, including pose cells, spatial view cells, and the topological experience map. This enables you to save maps for later use or share them between different runs.
+
+#### Exporting system state
+
+After finishing the mapping task you can export the final map, and the states of posecells and spatial_view_cells:
+
+```bash
+# Export the map to the default location (/neoslam_maps)
+ros2 ros2 service call /experience_map/export_json std_srvs/srv/Empty
+# Export pose_cells state
+ros2 service call /pose_cells/export_state std_srvs/srv/Empty
+# Export spatial_view_cells state
+ros2 service call /spatial_view/export_state std_srvs/srv/Empty
+```
+The export creates the following files:
+- `map_xxxxxx.json`
+- `pose_cells_state.json`
+- `spatial_view_state.json`
+
+#### Importing system state
+
+Once mapped, you can restart the NeoSLAM and retrive the system state. You must import the three files to restore the complete state of the system:
+
+```bash
+# Import services
+ros2 ros2 service call /experience_map/import_map neoslam/srv/ImportMap "{filename: 'map_xxxxxx.json'}"
+ros2 service call /pose_cells/import_state std_srvs/srv/Empty
+ros2 service call /spatial_view/import_state std_srvs/srv/Empty
+```
+
+#### Changing to Navigation Mode
+
+In Navigation mode, the system uses the map to localize within it without modifying the map itself. To use Navigation mode:
+
+```bash
+ros2 service call /change_mode std_srvs/srv/SetBool "{data: true}"
+```
+
+### Path Planning
+
+You can send goal poses for path planning. Example:
+
+```bash
+# via topic
+ros2 topic pub /robotarium/ExperienceMap/SetGoalPose geometry_msgs/msg/PoseStamped "{header: {frame_id: 'map'}, pose: {position: {x: 0.0, y: 1.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}}}" --once
+
+# or via service
+ros2 service call /experience_map/set_goal neoslam/srv/SetGoal "{x: 0.0, y: 1.0}"
+```
+
+Example:
+![Path_planning](Robotarium_path_planning.png)
+
+### License
+The GLP-3 License. See the [LICENSE](LICENSE) for details.
+
+### Citation
+If you use this package in your research, please cite:
