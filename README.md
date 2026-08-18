@@ -41,10 +41,31 @@ In addition to standard ROS 2 dependencies, this package requires:
 - `PyTorch` with CUDA (for deep learning feature extraction)
 - `PyBind11` (for Python-C++ integration)
 - `Roaring Bitmaps` (for efficient sparse representation)
+- `Cereal` (for serialization)
+- `Lark` (for parsing)
 
 ## Installation
 
-### 1. Install System Dependencies
+### 1. Install ROS 2 Jazzy
+
+First, install ROS 2 Jazzy on Ubuntu 24.04 following the official instructions:
+
+```bash
+# Add ROS 2 repository
+sudo apt update && sudo apt install curl
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+# Install ROS 2 Jazzy
+sudo apt update
+sudo apt install -y ros-jazzy-desktop python3-colcon-common-extensions
+
+# Source ROS 2
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
+
+### 2. Install System Dependencies
 
 Install the base packages and tools required by the system, including Python Virtual Environment support:
 
@@ -62,49 +83,96 @@ sudo apt install -y \
     libgl1-mesa-dev \
     libglu1-mesa-dev \
     libeigen3-dev \
+    libroaring-dev \
+    libcereal-dev \
     python3-opencv \
     python3-pip \
     python3-venv \
     python3-full \
     python3-numpy \
-    python3-pybind11
+    python3-pybind11 \
+    build-essential \
+    cmake \
+    git \
+    wget
 ```
 
-### 2. Configure Python Virtual Environment (PEP 668)
+### 3. Configure Python Virtual Environment (PEP 668)
 
-Ubuntu 24.04 enforces externally managed Python environments. To install PyTorch and maintain ROS 2 compatibility, create a virtual environment that links to system packages:
+**IMPORTANT:** Ubuntu 24.04 enforces externally managed Python environments (PEP 668). To install PyTorch and maintain ROS 2 compatibility, create a virtual environment with system site packages:
 
 ```bash
-# Create the environment outside the workspace
+# Create the virtual environment with system site packages
 python3 -m venv --system-site-packages ~/ros2_env
 
 # Activate the environment
 source ~/ros2_env/bin/activate
+
+# Verify the environment
+which python3
+# Should output: /home/usr/ros2_env/bin/python3
 ```
-
-### 3. Install PyTorch with GPU (CUDA) Support
-
-With the virtual environment activated, install PyTorch optimized for NVIDIA GPUs:
+*(Optional)* To automatically activate the environment on new terminals, add to your `~/.bashrc` after sourcing ROS:
 
 ```bash
-pip3 install torch torchvision
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+echo "source ~/ros2_env/bin/activate" >> ~/.bashrc
 ```
 
-*(Optional) To automate environment activation on new terminals, add this to your `~/.bashrc`:*
+### 4. Install Python Dependencies
+
+With the virtual environment activated, install all required Python packages:
+
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_env/bin/activate
+# Upgrade pip first
+pip install --upgrade pip setuptools wheel
+
+# Install PyTorch with CUDA support
+pip install torch torchvision
+
+# Install ROS 2 Python dependencies
+pip install \
+    empy \
+    pyyaml \
+    lark \
+    pyparsing \
+    rospkg \
+    rosdistro \
+    catkin-pkg \
+    netifaces \
+    defusedxml \
+    distro \
+    python-dateutil \
+    importlib-metadata
+
+# Install scientific computing libraries
+pip install numpy scipy matplotlib
+
+# Install OpenCV Python bindings
+pip install opencv-python opencv-python-headless
+
+# Install pybind11
+pip install pybind11
+
+# Install colcon tools
+pip install colcon-common-extensions vcstool
 ```
 
-### 4. Clone Required Repositories
+### 5. Configure rosdep
+```bash
+sudo rosdep init
+rosdep update
+```
+
+### 6. Clone Required Repositories
 
 ```bash
 cd ~/ros2_jazzy_ws/src
-git clone https://github.com/BorgesJVT/neoslam.git
+git clone https://github.com/fjscoelho/neoslam.git
 git clone https://github.com/BorgesJVT/topological_msgs.git
 ```
 
-### 5. Generate Random Projection Matrix
+### 7. Generate Random Projection Matrix
 
 The binary projector requires a random projection matrix. Generate it with:
 
@@ -113,17 +181,21 @@ cd ~/ros2_jazzy_ws/src/neoslam/src/dim_reduction_and_binarization/random_matrix
 python3 generate_random_matrix.py --rows 64896 --cols 1024 --output randomMatrix.bin
 ```
 
-### 6. Build the Workspace
+### 8. Build the Workspace
 
-Ensure your virtual environment is active before running the build command:
+**IMPORTANT:** Ensure your **virtual environment is active** before running the build command:
 
 ```bash
+# Activate the virtual environment (if not already active)
+source ~/ros2_env/bin/activate
+
+# Build packages
 cd ~/ros2_jazzy_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select topological_msgs neoslam --symlink-install
 ```
 
-### 7. Source the Workspace
+### 9. Source the Workspace
 
 ```bash
 source ~/ros2_jazzy_ws/install/setup.bash
@@ -136,20 +208,19 @@ source ~/ros2_jazzy_ws/install/setup.bash
 neoslam provides launch files for different datasets:
 
 ```bash
-# For iratAUS dataset
-ros2 launch neoslam irataus.launch.py use_sim_time:=true
 
 # For Robotarium dataset
-# ros2 launch neoslam robotarium.launch.py use_sim_time:=true
+ros2 launch neoslam robotarium.launch.py use_sim_time:=true
 ```
 
 ### Playing Dataset Bags
 
-In a separate terminal, play your ROS 2 bag file:
+In a separate terminal (with the virtual environment activated), play your ROS 2 bag file:
 
 ```bash
 # For iratAUS dataset
-ros2 bag play data/irat_aus_28112011.db3 --rate 1.0 --clock --start-paused
+ros2 bag play _2022-04-07-14-14-35_robotarium/_2022-04-07-14-14-35_robotarium_ros2.db3 --rate 1.0 --clock --start-paused --remap /stereo_camera/left/image_raw:=/robotarium/camera/image /odometry/filtered:=/robotarium/odom
 
 # Adjust rate as needed (1.0 = real-time, 2.0 = 2x speed, etc.)
 ```
+Obs.: Remappings are necessary to align the image and odometry descriptions with the names expected by NeOSLAM. The expected topic names are `/topic_root/camera/image` and `/topic/odom`, where `topic_root` is passed as a parameter in the `.config` configuration file.
