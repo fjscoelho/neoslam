@@ -126,6 +126,7 @@ ament_target_dependencies(spatial_view_cells_node
   std_msgs
   std_srvs
   topological_msgs
+  ament_index_cpp
 )
 
 # pose_cells_node executable
@@ -149,6 +150,7 @@ ament_target_dependencies(pose_cells_node
   nav_msgs
   std_srvs
   topological_msgs
+  ament_index_cpp
 )
 
 

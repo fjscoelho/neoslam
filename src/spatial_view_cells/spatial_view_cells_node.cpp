@@ -10,6 +10,7 @@
 #include <iostream>
 #include <chrono>
 #include <vector>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 #include "local_view_match_with_intervals.hpp"
 
@@ -75,30 +76,53 @@ public:
                 this->sdr_callback(msg);
             });
         
+        // Set up map directory for saving/loading PoseCell state
+            std::string map_dir = "./neoslam_maps/";
+            
+            try {
+                std::string pkg_share = ament_index_cpp::get_package_share_directory("neoslam");
+                // Return to the src directory of the package
+                size_t pos = pkg_share.find("/install/");
+                if (pos != std::string::npos) {
+                    std::string workspace = pkg_share.substr(0, pos);
+                    map_dir = workspace + "/src/neoslam/neoslam_maps/";
+                    RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", map_dir.c_str());
+                }
+            } catch (const std::exception& e) {
+                RCLCPP_WARN(this->get_logger(), "Error getting package directory: %s", e.what());
+                RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", map_dir.c_str());
+            }
+            
+            // Criate the directory if it doesn't exist
+            std::string mkdir_cmd = "mkdir -p " + map_dir;
+            system(mkdir_cmd.c_str());
 
-        // No construtor:
+            std::string filename = "spatial_view_state.json";
+            std::string full_path = map_dir + filename;
+
+        // Services for exporting and importing SpatialView state
         export_sv_service_ = this->create_service<std_srvs::srv::Empty>(
             "/spatial_view/export_state",
-            [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+            [this, full_path](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
                    std::shared_ptr<std_srvs::srv::Empty::Response> res) {
                 (void)req;
                 (void)res;
                 Json::Value state = lv_->serialize_to_json();
-                std::ofstream file("spatial_view_state.json");
+                std::ofstream file(full_path);
                 file << state.toStyledString();
-                RCLCPP_INFO(this->get_logger(), "SpatialView state exported");
+                RCLCPP_INFO(this->get_logger(), "SpatialView state exported to %s", full_path.c_str());
             });
 
         import_sv_service_ = this->create_service<std_srvs::srv::Empty>(
             "/spatial_view/import_state",
-            [this](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+            [this, full_path](const std::shared_ptr<std_srvs::srv::Empty::Request> req,
                    std::shared_ptr<std_srvs::srv::Empty::Response> res) {
                 (void)req;
                 (void)res;
                 Json::Value root;
-                std::ifstream file("spatial_view_state.json");
+                std::ifstream file(full_path);
                 if (!file.is_open()) {
-                    RCLCPP_ERROR(this->get_logger(), "Failed to open spatial_view_state.json");
+                    RCLCPP_ERROR(this->get_logger(), "Failed to open %s", full_path.c_str());
                     return;
                 }
                 file >> root;
