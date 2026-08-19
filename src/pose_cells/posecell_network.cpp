@@ -884,19 +884,6 @@ void PosecellNetwork::create_experience()
 
 PosecellNetwork::PosecellAction PosecellNetwork::get_action()
 {
-  // Em modo navigation, vou ainda determinar o comportamento, mas não criar ou modificar o grafo de experiências
-  /* if (ModeGlobals::getInstance().isNavigationMode()) {
-    // Em modo navigation, pode querer apenas localizar, não criar
-    // ou modificar o grafo de experiências
-    // Exemplo: retornar NO_ACTION para não modificar o mapa
-    // Mas ainda precisa processar o update
-    if (odo_update && vt_update) {
-      odo_update = false;
-      vt_update = false;
-    }
-    return NO_ACTION;
-  }
-    */
   
   // Regular behavior in mapping mode: create experiences and edges as needed
   PosecellExperience * experience;
@@ -1011,7 +998,7 @@ void PosecellNetwork::on_odo(double vtrans, double vrot, double time_diff_s)
 
 void PosecellNetwork::create_view_template()
 { 
-  // verificar necessidade de criar um novo template visual, se o sistema estiver em modo de navegação, não criar
+
   PosecellVisualTemplate * pcvt;
   visual_templates.resize(visual_templates.size() + 1);
   pcvt = &visual_templates[visual_templates.size() - 1];
@@ -1021,7 +1008,6 @@ void PosecellNetwork::create_view_template()
   pcvt->pc_th = th();
   pcvt->decay = VT_ACTIVE_DECAY;
 
-  // LOG: criação de novo template
   RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
               "📝 Created new visual template ID=%zu, pc=(%.2f,%.2f,%.2f), decay=%.2f",
               visual_templates.size() - 1, pcvt->pc_x, pcvt->pc_y, pcvt->pc_th, pcvt->decay);
@@ -1039,15 +1025,14 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
 
   PosecellVisualTemplate * pcvt;
 
-   // Em modo navigation, processa de forma diferente
+   // In navigation mode, if the template is unknown, do not create a new one; just log a warning and return
   if (ModeGlobals::getInstance().isNavigationMode()) {
-    // Navegação: apenas atualiza a pose, não cria novos templates
     if (vt >= visual_templates.size()) {
-      // Se o template não existe, não cria (diferente do mapping)
+      // If the template is unknown, does not create a new one (different from mapping), just log a warning and return
       RCLCPP_WARN(rclcpp::get_logger("PosecellNetwork"), 
                   "NAVIGATION: Unknown template %d, ignoring", vt);
       vt_update = true;
-      return; // conferir se vou precisar atualizar o bollean aqui: vt_update = true;
+      return; 
     } 
   }
   
@@ -1068,7 +1053,7 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
     {
       if (vt != current_vt)
       {
-        // template diferente do atual, não incrementa decay
+        // template different from current, don't increment decay
         RCLCPP_DEBUG(rclcpp::get_logger("PosecellNetwork"),
                      "vt=%u != current_vt=%u, decay unchanged", vt, current_vt);
       } else {
@@ -1124,7 +1109,6 @@ void PosecellNetwork::on_view_template(unsigned int vt, double vt_rad)
     }
   }
 
-  // Atualização do decay de todos os templates
   for (unsigned int i=0; i < visual_templates.size(); i++)
   {
     visual_templates[i].decay -= PC_VT_RESTORE;
@@ -1252,24 +1236,21 @@ bool PosecellNetwork::deserialize_from_json(const Json::Value& root) {
         experiences.push_back(exp);
     }
 
-    // Após restaurar visual_templates e experiences
     for (auto& vt : visual_templates) {
-    // Garantir que as coordenadas estejam dentro dos limites
     vt.pc_x = fmod(vt.pc_x + PC_DIM_XY, PC_DIM_XY);
     vt.pc_y = fmod(vt.pc_y + PC_DIM_XY, PC_DIM_XY);
     vt.pc_th = fmod(vt.pc_th + PC_DIM_TH, PC_DIM_TH);
     
-    // Resetar decay para permitir injeção
+    // Restore decay 
     vt.decay = VT_ACTIVE_DECAY;
 
-      // Log para depuração
-    RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
-                "Template %d: pc=(%.2f,%.2f,%.2f), decay=%.2f",
-                vt.id, vt.pc_x, vt.pc_y, vt.pc_th, vt.decay);
+      // Log to debug the restored visual templates
+    // RCLCPP_INFO(rclcpp::get_logger("PosecellNetwork"), 
+    //             "Template %d: pc=(%.2f,%.2f,%.2f), decay=%.2f",
+    //             vt.id, vt.pc_x, vt.pc_y, vt.pc_th, vt.decay);
 
     }
 
-    // Após restaurar visual_templates e experiences:
     for (size_t i = 0; i < experiences.size(); ++i) {
         int vt_id = experiences[i].vt_id;
         for (auto& vt : visual_templates) {
@@ -1280,9 +1261,8 @@ bool PosecellNetwork::deserialize_from_json(const Json::Value& root) {
         }
     }
 
-    // Ajustar current_exp se necessário
+    // Find the closest experience to the restored best pose and set it as current_exp
     if (!experiences.empty()) {
-        // Encontrar a experiência mais próxima da pose atual (best_x, best_y, best_th)
         double min_dist = DBL_MAX;
         unsigned int best_exp = 0;
         for (size_t i = 0; i < experiences.size(); ++i) {
@@ -1307,12 +1287,10 @@ bool PosecellNetwork::deserialize_from_json(const Json::Value& root) {
     prev_exp = root["prev_exp"].asUInt();
     vt_delta_pc_th = root["vt_delta_pc_th"].asDouble();
     
-    // Reconstruir associações entre visual templates e experiences (exps)
-    // Isso é importante para o funcionamento correto do get_action()
-    // Percorre todas as experiences do PoseCellNetwork e adiciona ao template correspondente
+    // Rebuild associations between visual templates and experiences (exps)
     for (size_t i = 0; i < experiences.size(); ++i) {
         int vt_id = experiences[i].vt_id;
-        // Encontrar o template com esse vt_id
+        // Find the template with that vt_id
         for (auto& vt : visual_templates) {
             if (vt.id == vt_id) {
                 vt.exps.push_back(i);

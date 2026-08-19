@@ -56,9 +56,7 @@ add_definitions(-DEIGEN_DONT_PARALLELIZE)
 # uncomment if you don't have irrlicht installed
 add_definitions("-DHAVE_IRRLICHT")
 
-# ============================================
-# GERAR INTERFACES DOS SERVIÇOS (ANTES DOS TARGETS)
-# ============================================
+
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ImportMap.srv"
   "srv/ListMaps.srv"
@@ -66,9 +64,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES builtin_interfaces
 )
 
-# ============================================
-# AGORA OS TARGETS (executáveis)
-# ============================================
+# Targets
 
 # visual_feature_extractor_node executable
 add_executable(visual_feature_extractor_node 
@@ -140,7 +136,7 @@ add_executable(pose_cells_node
 target_include_directories(pose_cells_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pose_cells
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include 
   ${JSONCPP_INCLUDE_DIRS}
 )
 target_link_libraries(pose_cells_node
@@ -155,9 +151,7 @@ ament_target_dependencies(pose_cells_node
   topological_msgs
 )
 
-# ============================================
-# EXPERIENCE MAP NODE (DEPOIS DA GERAÇÃO DOS SERVIÇOS)
-# ============================================
+
 add_executable(experience_map_node 
   src/experience_map/experience_map_node.cpp
   src/experience_map/experience_map.cpp
@@ -167,10 +161,10 @@ add_executable(experience_map_node
 target_include_directories(experience_map_node PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/experience_map
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  # <-- ADICIONAR
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mode_manager/include  
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pose_cells
   ${CMAKE_CURRENT_SOURCE_DIR}/src/spatial_view_cells
-  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp  # <-- ADICIONAR ESTA LINHA!
+  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp 
   ${JSONCPP_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
 )
@@ -199,7 +193,7 @@ ament_target_dependencies(experience_map_node
   rosidl_default_runtime
   ament_index_cpp
 )
-# Garantir que os serviços sejam gerados antes de compilar o nó
+
 # add_dependencies(experience_map_node ${PROJECT_NAME}_rosidl_generator_cpp)
 
 # visual_odometry_node executable
@@ -236,9 +230,6 @@ ament_target_dependencies(mode_manager_node
 )
 
 
-# ============================================
-# INSTALAÇÃO
-# ============================================
 install(TARGETS 
   visual_feature_extractor_node
   binary_projector_node
@@ -251,7 +242,7 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Instalar interfaces dos serviços
+# Install service interface files
 install(DIRECTORY srv/
   DESTINATION share/${PROJECT_NAME}/srv
   FILES_MATCHING PATTERN "*.srv"

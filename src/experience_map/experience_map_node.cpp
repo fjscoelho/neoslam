@@ -14,14 +14,14 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <visualization_msgs/msg/marker.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>  // <-- New!
-#include <std_msgs/msg/string.hpp>  // <-- New!
-#include "mode_manager/mode_globals.h"  // <-- New
-#include "state_manager.hpp" // <-- New
+#include <visualization_msgs/msg/marker_array.hpp>  
+#include <std_msgs/msg/string.hpp>  
+#include "mode_manager/mode_globals.h"  
+#include "state_manager.hpp" 
 
 
 // ============================================
-// INCLUDES PARA OS SERVIÇOS E EXPORTAÇÃO
+// INCLUDES TO HANDLE MAP EXPORT/IMPORT
 // ============================================
 #include <std_srvs/srv/empty.hpp>
 #include <json/json.h>
@@ -33,9 +33,6 @@
 #include "neoslam/srv/set_goal.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
-
-// #include "export_map_service.hpp"
-// #include "map_visualization_exporter.hpp"
 
 #ifdef HAVE_IRRLICHT
 #include "experience_map_scene.h"
@@ -106,8 +103,7 @@ class ExperienceMapNode : public rclcpp::Node
         this->get_parameter("exp_initial_em_deg").as_double()
       );
 
-      // Inicializa a pose odométrica com a primeira experiência (se houver)
-      // Isso garante que a odometria comece alinhada com o mapa em MAPPING
+      // Initialize odometry pose to (0,0,0)
       em->resetOdomPose(0.0, 0.0, 0.0);
 
       // Initialize Map Manager with proper directory
@@ -115,7 +111,7 @@ class ExperienceMapNode : public rclcpp::Node
       
       try {
           std::string pkg_share = ament_index_cpp::get_package_share_directory("neoslam");
-          // Volta para o diretório src do pacote
+          // Return to the src directory of the package
           size_t pos = pkg_share.find("/install/");
           if (pos != std::string::npos) {
               std::string workspace = pkg_share.substr(0, pos);
@@ -127,7 +123,7 @@ class ExperienceMapNode : public rclcpp::Node
           RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", map_dir.c_str());
       }
       
-      // Criar o diretório se não existir
+      // Criate the directory if it doesn't exist
       std::string mkdir_cmd = "mkdir -p " + map_dir;
       system(mkdir_cmd.c_str());
 
@@ -256,7 +252,7 @@ class ExperienceMapNode : public rclcpp::Node
     }
 
     // ============================================
-    // CALLBACKS DOS SERVIÇOS DE MAPA
+    // CALLBACKS OF THE SERVICES FOR EXPORTING AND IMPORTING MAPS
     // ============================================
 
     void export_json_callback(
@@ -330,7 +326,7 @@ class ExperienceMapNode : public rclcpp::Node
 
           if (success) {
             // ============================================
-            // Publishe the map after import
+            // Publish the map after import
             // ============================================
             RCLCPP_INFO(this->get_logger(), "📡 Publishing map after import...");
             publishMap(true);  // Publish the complete map
@@ -371,7 +367,6 @@ class ExperienceMapNode : public rclcpp::Node
       const std::shared_ptr<neoslam::srv::SetGoal::Request> request,
       std::shared_ptr<neoslam::srv::SetGoal::Response> response)
     {
-      // Verifica se o mapa tem experiências
       if (em->get_num_experiences() == 0) {
         response->success = false;
         response->message = "Map is empty. Run mapping mode first!";
@@ -379,7 +374,7 @@ class ExperienceMapNode : public rclcpp::Node
         return;
       }
       
-      // Adiciona o goal
+      // Add the goal to the experience map
       em->add_goal(request->x, request->y);
       response->success = true;
       response->message = "Goal set at (" + std::to_string(request->x) + ", " + 
@@ -389,13 +384,13 @@ class ExperienceMapNode : public rclcpp::Node
       RCLCPP_INFO(this->get_logger(), "🎯 Goal set at (%.2f, %.2f)", 
                   request->x, request->y);
       
-      // Replaneja o caminho imediatamente
+      // Replan the path to the new goal
       em->calculate_path_to_goal(rclcpp::Clock().now().seconds());
       em->get_goal_waypoint();
     }
 
     void publishMap(bool force = false) {
-        // Publicar o mapa no formato TopologicalMap
+        // Publish the map in TopologicalMap message format
         topological_msgs::msg::TopologicalMap em_map;
         em_map.header.stamp = this->now();
         em_map.header.frame_id = "map";
@@ -432,7 +427,7 @@ class ExperienceMapNode : public rclcpp::Node
         
         pub_em->publish(em_map);
         
-        // Publicar marcadores RViz
+        // Publish RViz markers
         publishRVizMarkers();
         
         RCLCPP_INFO(this->get_logger(), "📡 Map published: %d nodes, %d edges", 
@@ -442,7 +437,6 @@ class ExperienceMapNode : public rclcpp::Node
     void publishRVizMarkers() {
         visualization_msgs::msg::MarkerArray rviz_marker_array;
         
-        // 1. Nós como esferas verdes
         visualization_msgs::msg::Marker nodes_marker;
         nodes_marker.header.frame_id = "map";
         nodes_marker.header.stamp = this->now();
@@ -470,7 +464,6 @@ class ExperienceMapNode : public rclcpp::Node
         }
         rviz_marker_array.markers.push_back(nodes_marker);
         
-        // 2. Arestas como linhas brancas
         visualization_msgs::msg::Marker edges_marker;
         edges_marker.header.frame_id = "map";
         edges_marker.header.stamp = this->now();
@@ -505,7 +498,7 @@ class ExperienceMapNode : public rclcpp::Node
         }
         rviz_marker_array.markers.push_back(edges_marker);
         
-        // 3. Nó atual destacado em vermelho
+        // Current node in red
         visualization_msgs::msg::Marker current_marker;
         current_marker.header.frame_id = "map";
         current_marker.header.stamp = this->now();
@@ -542,29 +535,20 @@ class ExperienceMapNode : public rclcpp::Node
       {
         double time_diff = (rclcpp::Time(odo->header.stamp) - prev_time).seconds();
         em->on_odo(odo->twist.twist.linear.x, odo->twist.twist.angular.z, time_diff);
-
-        // ============================================
-        // MODIFICADO: Path Planning funciona em AMBOS os modos
-        // ============================================
         
-        // Se estiver em NAVIGATION, publica a pose da odometria (integrada)
+        // If in NAVIGATION mode, publish the odometry pose (integrated)
         if (ModeGlobals::getInstance().isNavigationMode()) {
           auto [x, y, th] = em->getOdomPose();
           publishRobotPoseFromOdometry(x, y, th, odo->header.stamp);
         }
         
-        // ============================================
-        // NOVO: Path Planning em AMBOS os modos
-        // ============================================
         if (em->get_current_goal_id() >= 0)
         { 
           // RCLCPP_DEBUG(this->get_logger(), "📊 [odo] Recalculating path...");
           // RCLCPP_DEBUG(this->get_logger(), "📊 Current exp: %d, Goal: %d", 
           //             em->get_current_id(), em->get_current_goal_id());
 
-          // ============================================
-          // FORÇAR RESET DO TIMEOUT ANTES DE CADA CÁLCULO
-          // ============================================
+          // Force the time_from_current_s to DBL_MAX for all experiences to force Dijkstra recalculation
           for (int id = 0; id < em->get_num_experiences(); id++) {
               Experience* exp = em->get_experience(id);
               if (exp != nullptr) {
@@ -573,9 +557,8 @@ class ExperienceMapNode : public rclcpp::Node
                   exp->current_to_goal = -1;
               }
           }
-          // Resetar o timeout para forçar o Dijkstra
-          // Você precisa adicionar um método público no ExperienceMap
-          em->resetGoalTimeout();  // Vamos criar este método
+
+          em->resetGoalTimeout();  
           
           double dx = em->get_experience(em->get_current_goal_id())->x_m - em->get_experience(em->get_current_id())->x_m;
           double dy = em->get_experience(em->get_current_goal_id())->y_m - em->get_experience(em->get_current_id())->y_m;
@@ -640,7 +623,7 @@ class ExperienceMapNode : public rclcpp::Node
                           "🧭 NAVIGATION: Loop closure detected! Correcting pose to experience %d", 
                           action->dest_id);
               
-              // Corrige a pose para a experiência destino
+              // Correct the robot's pose to the experience's pose
               bool success = em->correctPoseToExperience(action->dest_id, action->relative_rad);
               
               if (success) {
@@ -651,12 +634,9 @@ class ExperienceMapNode : public rclcpp::Node
                             "✅ Pose corrected to: x=%.3f y=%.3f th=%.3f", 
                             x, y, th);
 
-                // ============================================
-                // PUBLICAR NAVIGATION MARKER
-                // ============================================
+                
                 visualization_msgs::msg::MarkerArray nav_marker_array;
                 
-                // Marker vermelho grande
                 visualization_msgs::msg::Marker marker;
                 marker.header.frame_id = "map";
                 marker.header.stamp = action->header.stamp;
@@ -678,13 +658,12 @@ class ExperienceMapNode : public rclcpp::Node
                 
                 nav_marker_array.markers.push_back(marker);
                 
-                // Publica no tópico que você já usa
                 pub_rviz_markers_->publish(nav_marker_array);
                 
                 RCLCPP_INFO(this->get_logger(), "🔴 NAVIGATION MARKER published at (%.2f, %.2f)", x, y);
 
                 // ============================================
-                // NOVO: Replanejar caminho após loop closure
+                // NEW: Replan the path to the goal after loop closure
                 // ============================================
                 if (em->get_current_goal_id() >= 0) {
                   RCLCPP_INFO(this->get_logger(), "🔄 Replanning path after loop closure");
@@ -704,15 +683,12 @@ class ExperienceMapNode : public rclcpp::Node
                   em->calculate_path_to_goal(rclcpp::Time(action->header.stamp).seconds());
                   em->get_goal_waypoint();
                   
-                  // ============================================
-                  // NOVO: PUBLICAR O PATH ATUALIZADO IMEDIATAMENTE
-                  // ============================================
                   nav_msgs::msg::Path path;
                   path.header.stamp = this->now();
                   path.header.frame_id = "map";
                   path.poses.clear();
                   
-                  // Reconstrói o caminho do goal até o robô
+                  // Rebuild the path to the goal
                   if (em->get_current_goal_id() >= 0) {
                       unsigned int trace_exp_id = em->get_goals()[0];
                       while (trace_exp_id != em->get_goal_path_final_exp()) {
@@ -737,7 +713,7 @@ class ExperienceMapNode : public rclcpp::Node
                             action->dest_id);
             }
           } else {
-              // Outras ações são ignoradas em NAVIGATION
+              
               RCLCPP_DEBUG(this->get_logger(), 
                           "EM: NAVIGATION mode - ignoring action %d", action->action);
           }
@@ -768,7 +744,6 @@ class ExperienceMapNode : public rclcpp::Node
 
       em->iterate();
 
-      // Publicar pose do robô no frame "map"
       geometry_msgs::msg::PoseStamped pose_output;
       pose_output.header.stamp = action->header.stamp;
       pose_output.header.frame_id = "map";
@@ -783,7 +758,7 @@ class ExperienceMapNode : public rclcpp::Node
       pub_pose->publish(pose_output);
 
       // ============================================
-      // Publicar transformação TF do robô no frame "map"
+      // Publish the robot's pose as a TF transform for visualization in RViz
       // ============================================
       geometry_msgs::msg::TransformStamped tf_transform;
       tf_transform.header.stamp = action->header.stamp;
@@ -870,7 +845,7 @@ class ExperienceMapNode : public rclcpp::Node
 
       pub_em_markers->publish(em_marker);
 
-      // Publicar marcadores no formato MarkerArray para RViz
+      // Publicar markers to RViz
       visualization_msgs::msg::MarkerArray rviz_marker_array;
       
       // 1. Nós como esferas verdes
@@ -901,7 +876,6 @@ class ExperienceMapNode : public rclcpp::Node
       }
       rviz_marker_array.markers.push_back(nodes_marker);
       
-      // 2. Arestas como linhas brancas
       visualization_msgs::msg::Marker edges_marker;
       edges_marker.header.frame_id = "map";
       edges_marker.header.stamp = this->now();
@@ -936,7 +910,6 @@ class ExperienceMapNode : public rclcpp::Node
       }
       rviz_marker_array.markers.push_back(edges_marker);
       
-      // 3. Nó atual destacado em vermelho
       visualization_msgs::msg::Marker current_marker;
       current_marker.header.frame_id = "map";
       current_marker.header.stamp = this->now();
@@ -960,7 +933,7 @@ class ExperienceMapNode : public rclcpp::Node
           rviz_marker_array.markers.push_back(current_marker);
       }
       
-      // Publica o MarkerArray
+      // Publish the MarkerArray
       pub_rviz_markers_->publish(rviz_marker_array);
 
   #ifdef HAVE_IRRLICHT
@@ -986,7 +959,7 @@ class ExperienceMapNode : public rclcpp::Node
     void publishRobotPoseFromOdometry(double x, double y, double th, 
                                     const builtin_interfaces::msg::Time& stamp)
     {
-      // Publica a pose no tópico
+      // Publish the robot's pose in the "map" frame
       geometry_msgs::msg::PoseStamped pose_output;
       pose_output.header.stamp = stamp;
       pose_output.header.frame_id = "map";
@@ -1000,7 +973,7 @@ class ExperienceMapNode : public rclcpp::Node
       
       pub_pose->publish(pose_output);
 
-      // Publica a transformação TF
+      // Publish the TF transformation
       geometry_msgs::msg::TransformStamped tf_transform;
       tf_transform.header.stamp = stamp;
       tf_transform.header.frame_id = "map";
@@ -1034,7 +1007,7 @@ class ExperienceMapNode : public rclcpp::Node
         RCLCPP_INFO(this->get_logger(), "📌 Odom pose initialized at: x=%.3f y=%.3f th=%.3f", 
                     x, y, th);
         
-        // Replaneja o caminho se houver goal ativo
+        
         if (em->get_current_goal_id() >= 0) {
           RCLCPP_INFO(this->get_logger(), "🔄 Replanning path after mode change");
           em->calculate_path_to_goal(rclcpp::Clock().now().seconds());
@@ -1044,13 +1017,13 @@ class ExperienceMapNode : public rclcpp::Node
     }
 
     // ============================================================
-    // MEMBROS PRIVADOS
+    // Private members
     // ============================================================
     
-    // Experience Map principal
-    ExperienceMap* em = nullptr;  // <-- APENAS UMA VEZ!
+    // Experience Map 
+    ExperienceMap* em = nullptr;  
     
-    // Publicadores
+    // Publishers
     rclcpp::Publisher<topological_msgs::msg::TopologicalMap>::SharedPtr pub_em;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_em_markers;
@@ -1059,12 +1032,12 @@ class ExperienceMapNode : public rclcpp::Node
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_nav_marker_;
 
     
-    // Subscritores
+    // Subscribers
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry;
     rclcpp::Subscription<topological_msgs::msg::TopologicalAction>::SharedPtr sub_action;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal;
     
-    // Timers e contadores
+    // Timers and counters
     rclcpp::Time prev_time{0, 0, RCL_ROS_TIME};
     rclcpp::Time prev_goal_update{0, 0, RCL_ROS_TIME};
     rclcpp::Time prev_pub_time{0, 0, RCL_ROS_TIME};
