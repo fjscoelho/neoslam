@@ -86,11 +86,11 @@ class ExperienceMapNode : public rclcpp::Node
       this->declare_parameter("image_file", "");
       this->declare_parameter("export_filename", "topological_map.json");
 
-      std::string topic_root = this->get_parameter("topic_root").as_string();
+      topic_root_ = this->get_parameter("topic_root").as_string();
       
       // Log all parameters for debugging
       RCLCPP_INFO(this->get_logger(), "ExperienceMap Parameters:");
-      RCLCPP_INFO(this->get_logger(), "  topic_root: %s", topic_root.c_str());
+      RCLCPP_INFO(this->get_logger(), "  topic_root: %s", topic_root_.c_str());
       RCLCPP_INFO(this->get_logger(), "  exp_correction: %f", this->get_parameter("exp_correction").as_double());
       RCLCPP_INFO(this->get_logger(), "  exp_loops: %ld", this->get_parameter("exp_loops").as_int());
       RCLCPP_INFO(this->get_logger(), "  exp_initial_em_deg: %f", this->get_parameter("exp_initial_em_deg").as_double());
@@ -107,7 +107,7 @@ class ExperienceMapNode : public rclcpp::Node
       em->resetOdomPose(0.0, 0.0, 0.0);
 
       // Initialize Map Manager with proper directory
-      std::string map_dir = "./neoslam_maps/";
+      std::string states_dir = "./neoslam_exported_states/";
       
       try {
           std::string pkg_share = ament_index_cpp::get_package_share_directory("neoslam");
@@ -115,22 +115,22 @@ class ExperienceMapNode : public rclcpp::Node
           size_t pos = pkg_share.find("/install/");
           if (pos != std::string::npos) {
               std::string workspace = pkg_share.substr(0, pos);
-              map_dir = workspace + "/src/neoslam/neoslam_maps/";
-              RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", map_dir.c_str());
+              states_dir = workspace + "/src/neoslam/neoslam_exported_states/";
+              RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", states_dir.c_str());
           }
       } catch (const std::exception& e) {
           RCLCPP_WARN(this->get_logger(), "Error getting package directory: %s", e.what());
-          RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", map_dir.c_str());
+          RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", states_dir.c_str());
       }
       
       // Criate the directory if it doesn't exist
-      std::string mkdir_cmd = "mkdir -p " + map_dir;
+      std::string mkdir_cmd = "mkdir -p " + states_dir;
       system(mkdir_cmd.c_str());
 
       // Initialize Map Manager
-      map_manager_ = std::make_shared<neoslam::MapManager>(em, map_dir);
+      map_manager_ = std::make_shared<neoslam::MapManager>(em, states_dir);
       RCLCPP_INFO(this->get_logger(), "Map Manager initialized");
-      RCLCPP_INFO(this->get_logger(), "  Map directory: %s", map_manager_->get_map_dir().c_str());
+      RCLCPP_INFO(this->get_logger(), "  Map directory: %s", map_manager_->get_states_dir().c_str());
 
       // Export/Import services
       export_json_service_ = this->create_service<std_srvs::srv::Empty>(
@@ -179,36 +179,36 @@ class ExperienceMapNode : public rclcpp::Node
       
       // Initialize publishers
       pub_em = this->create_publisher<topological_msgs::msg::TopologicalMap>(
-        topic_root + "/ExperienceMap/Map", 10);
+        topic_root_ + "/ExperienceMap/Map", 10);
       pub_em_markers = this->create_publisher<visualization_msgs::msg::Marker>(
-        topic_root + "/ExperienceMap/MapMarker", 10);
+        topic_root_ + "/ExperienceMap/MapMarker", 10);
       pub_pose = this->create_publisher<geometry_msgs::msg::PoseStamped>(
-        topic_root + "/ExperienceMap/RobotPose", 10);
+        topic_root_ + "/ExperienceMap/RobotPose", 10);
       pub_goal_path = this->create_publisher<nav_msgs::msg::Path>(
-        topic_root + "/ExperienceMap/PathToGoal", 10);
+        topic_root_ + "/ExperienceMap/PathToGoal", 10);
 
       // Publisher para MarkerArray (RViz)
       pub_rviz_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-        topic_root + "/ExperienceMap/RVizMarkers", 10);
+        topic_root_ + "/ExperienceMap/RVizMarkers", 10);
 
       // Publisher para o marker da experiência atual (NAVIGATION)
       pub_nav_marker_ = this->create_publisher<visualization_msgs::msg::Marker>(
-      topic_root + "/ExperienceMap/NavigationMarker", 10);
+      topic_root_ + "/ExperienceMap/NavigationMarker", 10);
 
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
       RCLCPP_INFO(this->get_logger(), "TF broadcaster initialized");
       
       // Initialize subscribers
       sub_odometry = this->create_subscription<nav_msgs::msg::Odometry>(
-        topic_root + "/odom", 10,
+        topic_root_ + "/odom", 10,
         std::bind(&ExperienceMapNode::odo_callback, this, std::placeholders::_1));
       
       sub_action = this->create_subscription<topological_msgs::msg::TopologicalAction>(
-        topic_root + "/PoseCell/TopologicalAction", 10,
+        topic_root_ + "/PoseCell/TopologicalAction", 10,
         std::bind(&ExperienceMapNode::action_callback, this, std::placeholders::_1));
       
       sub_goal = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-        topic_root + "/ExperienceMap/SetGoalPose", 10,
+        topic_root_ + "/ExperienceMap/SetGoalPose", 10,
         std::bind(&ExperienceMapNode::set_goal_pose_callback, this, std::placeholders::_1));
 
     // ADICIONA O SUBSCRIBER DO MODO
@@ -266,7 +266,8 @@ class ExperienceMapNode : public rclcpp::Node
             neoslam::MapMetadata metadata;
             metadata.description = "NeoSLAM Topological Map (JSON)";
             std::string timestamp = std::to_string(this->now().seconds());
-            map_manager_->export_json("map_" + timestamp + ".json", metadata);
+            metadata.custom_params["topic_root"] = topic_root_;
+            map_manager_->export_json(topic_root_ + "_map.json", metadata);
         }
     }
 
@@ -355,7 +356,7 @@ class ExperienceMapNode : public rclcpp::Node
             auto maps = map_manager_->list_maps();
             response->maps = maps;
             response->count = maps.size();
-            response->directory = map_manager_->get_map_dir();
+            response->directory = map_manager_->get_states_dir();
         } else {
             response->count = 0;
             response->directory = "";
@@ -1047,6 +1048,7 @@ class ExperienceMapNode : public rclcpp::Node
 
     // Map Manager
     std::shared_ptr<neoslam::MapManager> map_manager_;
+    std::string topic_root_;
     std::shared_ptr<StateManager> state_manager_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_json_service_;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr export_yaml_service_;

@@ -149,7 +149,7 @@ public:
     );
 
     // Set up map directory for saving/loading PoseCell state
-      std::string map_dir = "./neoslam_maps/";
+      std::string states_dir = "./neoslam_exported_states/";
       
       try {
           std::string pkg_share = ament_index_cpp::get_package_share_directory("neoslam");
@@ -157,20 +157,20 @@ public:
           size_t pos = pkg_share.find("/install/");
           if (pos != std::string::npos) {
               std::string workspace = pkg_share.substr(0, pos);
-              map_dir = workspace + "/src/neoslam/neoslam_maps/";
-              RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", map_dir.c_str());
+              states_dir = workspace + "/src/neoslam/neoslam_exported_states/";
+              RCLCPP_INFO(this->get_logger(), "Map directory set to: %s", states_dir.c_str());
           }
       } catch (const std::exception& e) {
           RCLCPP_WARN(this->get_logger(), "Error getting package directory: %s", e.what());
-          RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", map_dir.c_str());
+          RCLCPP_WARN(this->get_logger(), "Using default map directory: %s", states_dir.c_str());
       }
       
       // Criate the directory if it doesn't exist
-      std::string mkdir_cmd = "mkdir -p " + map_dir;
+      std::string mkdir_cmd = "mkdir -p " + states_dir;
       system(mkdir_cmd.c_str());
 
-      std::string filename = "pose_cells_state.json";
-      std::string full_path = map_dir + filename;
+      std::string filename = topic_root + "_pose_cells_state.json";
+      std::string full_path = states_dir + filename;
 
     // services for exporting and importing PoseCell state
     export_pc_service_ = this->create_service<std_srvs::srv::Empty>(

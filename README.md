@@ -275,7 +275,7 @@ neoslam allows you to export the entire state of the SLAM system, including pose
 After finishing the mapping task you can export the final map, and the states of posecells and spatial_view_cells:
 
 ```bash
-# Export the map to the default location (/neoslam_maps)
+# Export the map to the default location (/neoslam_exported_states)
 ros2 ros2 service call /experience_map/export_json std_srvs/srv/Empty
 # Export pose_cells state
 ros2 service call /pose_cells/export_state std_srvs/srv/Empty

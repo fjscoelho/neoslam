@@ -1,6 +1,6 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 109
+    Help Height: 100
     Name: Displays
     Property Tree Widget:
       Expanded:
@@ -11,7 +11,7 @@ Panels:
         - /Path1
         - /GoalPose1
       Splitter Ratio: 0.5
-    Tree Height: 496
+    Tree Height: 505
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -71,6 +71,7 @@ Visualization Manager:
       Namespaces:
         current: true
         edges: true
+        navigation_marker: true
         nodes: true
       Topic:
         Depth: 5

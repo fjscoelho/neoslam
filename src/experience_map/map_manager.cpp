@@ -5,15 +5,15 @@
 namespace neoslam 
 {
 
-    MapManager::MapManager(ExperienceMap* em, const std::string& map_dir) 
-        : em_(em), map_dir_(map_dir) {
+    MapManager::MapManager(ExperienceMap* em, const std::string& states_dir) 
+        : em_(em), states_dir_(states_dir) {
         create_directory();
     }
 
     void MapManager::create_directory() {
-        if (!std::filesystem::exists(map_dir_)) {
-            std::filesystem::create_directories(map_dir_);
-            std::cout << "Created map directory: " << map_dir_ << std::endl;
+        if (!std::filesystem::exists(states_dir_)) {
+            std::filesystem::create_directories(states_dir_);
+            std::cout << "Created map directory: " << states_dir_ << std::endl;
         }
     }
 
@@ -114,7 +114,7 @@ namespace neoslam
     bool MapManager::export_json(const std::string& filename, const MapMetadata& metadata) {
         Json::Value root = serialize_to_json(metadata);
         
-        std::string full_path = map_dir_ + filename;
+        std::string full_path = states_dir_ + filename;
         if (filename.find(".json") == std::string::npos) {
             full_path += ".json";
         }
@@ -195,7 +195,7 @@ namespace neoslam
     bool MapManager::export_yaml(const std::string& filename, const MapMetadata& metadata) {
         YAML::Node root = serialize_to_yaml(metadata);
         
-        std::string full_path = map_dir_ + filename;
+        std::string full_path = states_dir_ + filename;
         if (filename.find(".yaml") == std::string::npos && 
             filename.find(".yml") == std::string::npos) {
             full_path += ".yaml";
@@ -298,7 +298,7 @@ namespace neoslam
     bool MapManager::export_binary(const std::string& filename, const MapMetadata& metadata) {
         std::vector<uint8_t> buffer = serialize_to_binary(metadata);
         
-        std::string full_path = map_dir_ + filename;
+        std::string full_path = states_dir_ + filename;
         if (filename.find(".bin") == std::string::npos) {
             full_path += ".bin";
         }
@@ -339,7 +339,7 @@ namespace neoslam
         if (success) {
             std::cout << "All formats exported successfully!" << std::endl;
             std::cout << "Base name: " << base_name << std::endl;
-            std::cout << "Location: " << map_dir_ << std::endl;
+            std::cout << "Location: " << states_dir_ << std::endl;
         }
         
         return success;
@@ -350,7 +350,7 @@ namespace neoslam
     // ============================================
 
     bool MapManager::import_map(const std::string& filename) {
-        std::string full_path = map_dir_ + filename;
+        std::string full_path = states_dir_ + filename;
         
         // Detectar formato pela extensão
         if (filename.find(".json") != std::string::npos) {
@@ -519,11 +519,11 @@ namespace neoslam
     std::vector<std::string> MapManager::list_maps() const {
         std::vector<std::string> maps;
         
-        if (!std::filesystem::exists(map_dir_)) {
+        if (!std::filesystem::exists(states_dir_)) {
             return maps;
         }
         
-        for (const auto& entry : std::filesystem::directory_iterator(map_dir_)) {
+        for (const auto& entry : std::filesystem::directory_iterator(states_dir_)) {
             if (entry.is_regular_file()) {
                 std::string path = entry.path().string();
                 // Filtrar apenas arquivos de mapa
@@ -540,7 +540,7 @@ namespace neoslam
     }
 
     bool MapManager::delete_map(const std::string& filename) {
-        std::string full_path = map_dir_ + filename;
+        std::string full_path = states_dir_ + filename;
         if (!std::filesystem::exists(full_path)) {
             std::cerr << "File does not exist: " << filename << std::endl;
             return false;

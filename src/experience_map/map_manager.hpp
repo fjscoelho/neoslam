@@ -43,7 +43,7 @@ struct MapMetadata {
 
 class MapManager {
 public:
-    MapManager(ExperienceMap* em, const std::string& map_dir = "./neoslam_maps/");
+    MapManager(ExperienceMap* em, const std::string& states_dir = "./neoslam_exported_states/");
     ~MapManager() = default;
     
     // Exportação
@@ -58,11 +58,11 @@ public:
     // Gerenciamento
     std::vector<std::string> list_maps() const;
     bool delete_map(const std::string& filename);
-    std::string get_map_dir() const { return map_dir_; }
+    std::string get_states_dir() const { return states_dir_; }
     
 private:
     ExperienceMap* em_;
-    std::string map_dir_;
+    std::string states_dir_;
     
     // Serialização
     Json::Value serialize_to_json(const MapMetadata& metadata);
