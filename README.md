@@ -283,9 +283,11 @@ ros2 service call /pose_cells/export_state std_srvs/srv/Empty
 ros2 service call /spatial_view/export_state std_srvs/srv/Empty
 ```
 The export creates the following files:
-- `map_xxxxxx.json`
-- `pose_cells_state.json`
-- `spatial_view_state.json`
+- `topic_root_map.json`. 
+- `topic_root_pose_cells_state.json`
+- `topic_root_spatial_view_state.json`
+
+Example: robotarium_map.json, robotarium_pose_cells_state.json and robotarium_spatial_view_state.json.
 
 #### Importing system state
 
