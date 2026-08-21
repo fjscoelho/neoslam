@@ -237,7 +237,8 @@ rviz2 -d robotarium.rviz
 
 ### Playing Dataset Bags
 
-In a separate terminal (with the virtual environment activated), play your ROS 2 bag file:
+In a separate terminal (with the virtual environment activated), play your ROS 2 bag file. **Link to download the Robotarium Dataset**: (https://huggingface.co/datasets/BioinspiredSLAM/Robotarium) 
+
 
 ```bash
 # For Robotarium dataset
